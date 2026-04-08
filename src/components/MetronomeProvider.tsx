@@ -10,10 +10,12 @@ interface MetronomeContextValue {
   beatsPerMeasure: number;
   accentFirst: boolean;
   currentBeat: number;
+  offsetMs: number;
   toggle: () => void;
   setBpm: (n: number) => void;
   setBeatsPerMeasure: (n: number) => void;
   setAccentFirst: (a: boolean) => void;
+  setOffsetMs: (ms: number) => void;
   tap: () => void;
 }
 
@@ -26,6 +28,7 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
   const [beatsPerMeasure, setBeatsPerMeasureState] = useState(4);
   const [accentFirst, setAccentFirstState] = useState(true);
   const [currentBeat, setCurrentBeat] = useState(0);
+  const [offsetMs, setOffsetMsState] = useState(0);
   const tapTimes = useRef<number[]>([]);
   const player = usePlayer();
   const lastSongIdRef = useRef<string | null>(null);
@@ -34,6 +37,17 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     clockRef.current = new MetronomeClock();
     clockRef.current.setOnBeat((b) => setCurrentBeat(b));
+    // Restore saved offset
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('metronome_offset_ms');
+      if (stored) {
+        const v = parseInt(stored, 10);
+        if (!isNaN(v)) {
+          setOffsetMsState(v);
+          clockRef.current.setOffset(v / 1000);
+        }
+      }
+    }
     return () => {
       clockRef.current?.destroy();
       clockRef.current = null;
@@ -57,7 +71,7 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
       .catch(() => {});
   }, [player.song]);
 
-  const toggle = useCallback(() => {
+  const toggle = useCallback(async () => {
     if (!clockRef.current) return;
     if (enabled) {
       clockRef.current.stop();
@@ -66,10 +80,11 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
       clockRef.current.setBpm(bpm);
       clockRef.current.setBeatsPerMeasure(beatsPerMeasure);
       clockRef.current.setAccentFirst(accentFirst);
-      clockRef.current.start();
+      clockRef.current.setOffset(offsetMs / 1000);
+      await clockRef.current.start();
       setEnabled(true);
     }
-  }, [enabled, bpm, beatsPerMeasure, accentFirst]);
+  }, [enabled, bpm, beatsPerMeasure, accentFirst, offsetMs]);
 
   const setBpm = useCallback((n: number) => {
     setBpmState(n);
@@ -84,6 +99,15 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
   const setAccentFirst = useCallback((a: boolean) => {
     setAccentFirstState(a);
     clockRef.current?.setAccentFirst(a);
+  }, []);
+
+  const setOffsetMs = useCallback((ms: number) => {
+    const clamped = Math.max(-500, Math.min(500, Math.round(ms)));
+    setOffsetMsState(clamped);
+    clockRef.current?.setOffset(clamped / 1000);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('metronome_offset_ms', String(clamped));
+    }
   }, []);
 
   const tap = useCallback(() => {
@@ -106,8 +130,8 @@ export function MetronomeProvider({ children }: { children: ReactNode }) {
 
   return (
     <MetronomeContext.Provider value={{
-      enabled, bpm, beatsPerMeasure, accentFirst, currentBeat,
-      toggle, setBpm, setBeatsPerMeasure, setAccentFirst, tap,
+      enabled, bpm, beatsPerMeasure, accentFirst, currentBeat, offsetMs,
+      toggle, setBpm, setBeatsPerMeasure, setAccentFirst, setOffsetMs, tap,
     }}>
       {children}
     </MetronomeContext.Provider>
