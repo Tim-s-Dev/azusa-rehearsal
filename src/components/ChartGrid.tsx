@@ -119,15 +119,18 @@ export default function ChartGrid({
                   type="button"
                   data-cell={`${mIdx + measureOffset}-${bIdx}`}
                   onClick={(e) => handleCellTap(e, mIdx, bIdx)}
-                  className={`flex-1 min-w-0 h-12 text-center text-base font-mono rounded-md border transition-all ${
+                  className={`flex-1 min-w-0 h-12 px-1 text-center font-mono rounded-md border transition-all ${
+                    beat && beat.length >= 4 ? 'text-xs' : beat && beat.length >= 3 ? 'text-sm' : 'text-base'
+                  } ${
                     isFocused(mIdx, bIdx)
                       ? 'bg-violet-600/30 border-violet-400 ring-2 ring-violet-400/50 text-white'
                       : beat
                         ? 'bg-zinc-900 border-zinc-700 text-white hover:border-zinc-500'
                         : 'bg-zinc-900/50 border-zinc-800 text-zinc-600 hover:border-zinc-600'
                   }`}
+                  title={beat || ''}
                 >
-                  {beat || '·'}
+                  <span className="truncate block">{beat || '·'}</span>
                 </button>
               ))}
             </div>

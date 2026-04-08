@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { ArrowLeft, Music2, FileText, Hash, File, Sparkles, ListTree } from 'lucide-react';
+import { ArrowLeft, Music2, FileText, Hash, File, Sparkles, ListTree, Piano as PianoIcon } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import AudioPlayer from '@/components/AudioPlayer';
 import NotesEditor from '@/components/NotesEditor';
@@ -13,6 +13,7 @@ import DissectButton from '@/components/DissectButton';
 import DissectionViewer from '@/components/DissectionViewer';
 import SongTimeline from '@/components/SongTimeline';
 import StructureView from '@/components/StructureView';
+import Piano from '@/components/Piano';
 import type { Song, SongFile } from '@/lib/types';
 
 export default function SongPage() {
@@ -86,6 +87,9 @@ export default function SongPage() {
           </TabsTrigger>
           <TabsTrigger value="structure" className="rounded-full px-4 py-2 gap-1.5 data-[state=active]:bg-gradient-to-r data-[state=active]:from-violet-600 data-[state=active]:to-fuchsia-600 data-[state=active]:text-white">
             <ListTree size={14} /> Structure
+          </TabsTrigger>
+          <TabsTrigger value="piano" className="rounded-full px-4 py-2 gap-1.5 data-[state=active]:bg-gradient-to-r data-[state=active]:from-violet-600 data-[state=active]:to-fuchsia-600 data-[state=active]:text-white">
+            <PianoIcon size={14} /> Piano
           </TabsTrigger>
           <TabsTrigger value="dissect" className="rounded-full px-4 py-2 gap-1.5 data-[state=active]:bg-gradient-to-r data-[state=active]:from-violet-600 data-[state=active]:to-fuchsia-600 data-[state=active]:text-white">
             <Sparkles size={14} /> AI
@@ -174,6 +178,15 @@ export default function SongPage() {
                 onSongChange={loadSong}
               />
             )}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="piano" className="mt-6">
+          <div className="glass rounded-3xl p-6">
+            <Piano songKey={song?.key || null} octaves={2} startMidi={48} />
+            <p className="text-xs text-zinc-500 mt-3 text-center">
+              Tap keys to play notes. Scale tones for {song?.key || 'this key'} are highlighted.
+            </p>
           </div>
         </TabsContent>
 

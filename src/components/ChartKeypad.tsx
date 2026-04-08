@@ -47,12 +47,11 @@ export default function ChartKeypad() {
   if (!k.focusedCell) return null;
 
   const handleKey = (key: typeof KEYS[number]) => {
-    if (key.type === 'num') {
-      // Numbers replace the current value (start fresh)
-      k.setBeatValue(key.value);
-    } else if (key.type === 'mod') {
+    if (key.type === 'num' || key.type === 'mod') {
+      // All inputs append. Use Clear to start fresh.
       k.appendChar(key.value);
     } else if (key.type === 'replace') {
+      // Hold (-) and whole-note (◇) replace the cell entirely
       k.setBeatValue(key.value);
       k.advance();
     }
