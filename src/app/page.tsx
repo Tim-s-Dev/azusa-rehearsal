@@ -2,9 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Plus, Calendar, MapPin, Music } from 'lucide-react';
+import { Plus, Calendar, MapPin, Music2 as Music, Sparkles, ArrowUpRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import {
   Dialog,
@@ -35,60 +34,84 @@ export default function HomePage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold flex items-center gap-2">
-            <Music size={28} className="text-indigo-500" />
-            Rehearsal
+    <div className="space-y-10">
+      {/* Hero */}
+      <div className="flex items-start justify-between pt-4">
+        <div className="space-y-3">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full glass text-xs text-zinc-400">
+            <Sparkles size={12} className="text-violet-400" />
+            Rehearsal Studio
+          </div>
+          <h1 className="text-5xl font-bold tracking-tight">
+            <span className="gradient-text">Rehearse</span>
+            <span className="text-white"> like a pro.</span>
           </h1>
-          <p className="text-zinc-500 mt-1">Your conferences and worship events</p>
+          <p className="text-zinc-400 text-lg max-w-md">
+            Multi-track audio, smart notes, and Nashville Number charts — all in one place.
+          </p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger className="inline-flex items-center justify-center gap-1 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
-            <Plus size={16} /> Conference
+          <DialogTrigger className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white font-medium shadow-lg shadow-violet-600/20 transition-all hover:shadow-violet-600/40 hover:scale-105">
+            <Plus size={16} /> New Conference
           </DialogTrigger>
-          <DialogContent className="bg-zinc-900 border-zinc-700">
+          <DialogContent className="bg-zinc-950/95 backdrop-blur-xl border-zinc-800">
             <DialogHeader>
-              <DialogTitle>New Conference</DialogTitle>
+              <DialogTitle className="text-xl">Create Conference</DialogTitle>
             </DialogHeader>
             <div className="space-y-3">
-              <Input placeholder="Conference Name" value={form.name} onChange={e => setForm({...form, name: e.target.value})} className="bg-zinc-800 border-zinc-700" />
-              <Input placeholder="Location" value={form.location} onChange={e => setForm({...form, location: e.target.value})} className="bg-zinc-800 border-zinc-700" />
+              <Input placeholder="Conference Name" value={form.name} onChange={e => setForm({...form, name: e.target.value})} className="bg-zinc-900/50 border-zinc-800 h-11" />
+              <Input placeholder="Location" value={form.location} onChange={e => setForm({...form, location: e.target.value})} className="bg-zinc-900/50 border-zinc-800 h-11" />
               <div className="grid grid-cols-2 gap-2">
-                <Input type="date" value={form.start_date} onChange={e => setForm({...form, start_date: e.target.value})} className="bg-zinc-800 border-zinc-700" />
-                <Input type="date" value={form.end_date} onChange={e => setForm({...form, end_date: e.target.value})} className="bg-zinc-800 border-zinc-700" />
+                <Input type="date" value={form.start_date} onChange={e => setForm({...form, start_date: e.target.value})} className="bg-zinc-900/50 border-zinc-800 h-11" />
+                <Input type="date" value={form.end_date} onChange={e => setForm({...form, end_date: e.target.value})} className="bg-zinc-900/50 border-zinc-800 h-11" />
               </div>
-              <Button onClick={create} className="w-full">Create</Button>
+              <Button onClick={create} className="w-full h-11 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500">Create Conference</Button>
             </div>
           </DialogContent>
         </Dialog>
       </div>
 
+      {/* Conference grid */}
       {conferences.length === 0 ? (
-        <div className="text-center py-20 text-zinc-500">
-          <Music size={48} className="mx-auto mb-4 opacity-50" />
-          <p>No conferences yet. Create one to get started.</p>
+        <div className="glass rounded-3xl p-16 text-center">
+          <div className="inline-flex p-4 rounded-2xl bg-violet-500/10 mb-4">
+            <Music size={32} className="text-violet-400" />
+          </div>
+          <p className="text-zinc-400 text-lg">No conferences yet</p>
+          <p className="text-zinc-600 text-sm mt-1">Create one to get started</p>
         </div>
       ) : (
-        <div className="grid gap-4">
-          {conferences.map(conf => (
-            <Link key={conf.id} href={`/conference/${conf.id}`}>
-              <Card className="p-5 bg-zinc-900 border-zinc-800 hover:border-indigo-500/50 transition-colors cursor-pointer">
-                <h2 className="text-xl font-bold text-white">{conf.name}</h2>
-                <div className="flex items-center gap-4 mt-2 text-sm text-zinc-400">
+        <div className="grid gap-4 sm:grid-cols-2">
+          {conferences.map((conf, i) => (
+            <Link key={conf.id} href={`/conference/${conf.id}`} className="group">
+              <div className="glass rounded-3xl p-6 transition-all hover:scale-[1.02] hover:shadow-2xl hover:shadow-violet-600/10 cursor-pointer h-full">
+                <div className="flex items-start justify-between mb-4">
+                  <div className={`inline-flex p-2.5 rounded-xl ${
+                    i % 3 === 0 ? 'bg-violet-500/10 text-violet-400'
+                    : i % 3 === 1 ? 'bg-fuchsia-500/10 text-fuchsia-400'
+                    : 'bg-blue-500/10 text-blue-400'
+                  }`}>
+                    <Music size={18} />
+                  </div>
+                  <ArrowUpRight size={20} className="text-zinc-600 group-hover:text-white transition-colors" />
+                </div>
+                <h2 className="text-2xl font-bold text-white mb-3 leading-tight">{conf.name}</h2>
+                <div className="space-y-1.5 text-sm text-zinc-400">
                   {conf.location && (
-                    <span className="flex items-center gap-1"><MapPin size={14} /> {conf.location}</span>
+                    <div className="flex items-center gap-2">
+                      <MapPin size={14} className="text-zinc-600" />
+                      {conf.location}
+                    </div>
                   )}
                   {conf.start_date && (
-                    <span className="flex items-center gap-1">
-                      <Calendar size={14} />
+                    <div className="flex items-center gap-2">
+                      <Calendar size={14} className="text-zinc-600" />
                       {new Date(conf.start_date + 'T00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                       {conf.end_date && ` – ${new Date(conf.end_date + 'T00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`}
-                    </span>
+                    </div>
                   )}
                 </div>
-              </Card>
+              </div>
             </Link>
           ))}
         </div>

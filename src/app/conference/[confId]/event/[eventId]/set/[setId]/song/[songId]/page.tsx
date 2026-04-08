@@ -3,13 +3,16 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { ArrowLeft, Music2, FileText, Hash, FileAudio, File } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
+import { ArrowLeft, Music2, FileText, Hash, File, Sparkles, ListTree } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import AudioPlayer from '@/components/AudioPlayer';
 import NotesEditor from '@/components/NotesEditor';
 import NumberChartEditor from '@/components/NumberChartEditor';
 import FileUpload from '@/components/FileUpload';
+import DissectButton from '@/components/DissectButton';
+import DissectionViewer from '@/components/DissectionViewer';
+import SongTimeline from '@/components/SongTimeline';
+import StructureView from '@/components/StructureView';
 import type { Song, SongFile } from '@/lib/types';
 
 export default function SongPage() {
@@ -20,11 +23,13 @@ export default function SongPage() {
   const [files, setFiles] = useState<SongFile[]>([]);
 
   useEffect(() => {
-    fetch(`/api/songs?id=${songId}`).then(r => r.json()).then(setSong);
+    loadSong();
     loadFiles();
   }, [songId]);
 
+  const loadSong = () => fetch(`/api/songs?id=${songId}`).then(r => r.json()).then(setSong);
   const loadFiles = () => fetch(`/api/files?song_id=${songId}`).then(r => r.json()).then(setFiles);
+  const onDissectComplete = () => { loadSong(); loadFiles(); };
 
   const audioFiles = files.filter(f => f.file_type === 'audio');
   const pdfFiles = files.filter(f => f.file_type === 'pdf');
@@ -34,71 +39,84 @@ export default function SongPage() {
     <div className="space-y-6">
       <Link
         href={`/conference/${confId}/event/${eventId}/set/${setId}`}
-        className="flex items-center gap-1 text-zinc-500 hover:text-zinc-300 text-sm"
+        className="inline-flex items-center gap-1 text-zinc-500 hover:text-violet-400 text-sm transition-colors"
       >
-        <ArrowLeft size={16} /> Back to Songs
+        <ArrowLeft size={16} /> Back
       </Link>
 
-      {/* Song Header */}
-      <div>
-        <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-bold">{song?.title || 'Loading...'}</h1>
-          {song?.key && (
-            <Badge className="bg-indigo-600 text-white text-sm">{song.key}</Badge>
-          )}
-          {song?.bpm && (
-            <Badge variant="outline" className="text-zinc-400 border-zinc-600">
-              {song.bpm} BPM
-            </Badge>
-          )}
+      {/* Song Header - hero card */}
+      <div className="glass rounded-3xl p-8 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-violet-600/20 to-fuchsia-600/20 blur-3xl -translate-y-1/2 translate-x-1/2" />
+        <div className="relative">
+          <div className="flex items-center gap-3 mb-2">
+            {song?.key && (
+              <div className="px-3 py-1 rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white text-xs font-bold tracking-wider">
+                KEY · {song.key}
+              </div>
+            )}
+            {song?.bpm && (
+              <div className="px-3 py-1 rounded-full glass text-xs font-mono">
+                {song.bpm} BPM
+              </div>
+            )}
+          </div>
+          <h1 className="text-4xl font-bold tracking-tight mb-1">{song?.title || 'Loading...'}</h1>
+          {song?.artist && <p className="text-zinc-400 text-lg">{song.artist}</p>}
+          {song?.description && <p className="text-zinc-500 text-sm mt-2">{song.description}</p>}
         </div>
-        {song?.artist && <p className="text-zinc-400 mt-1">{song.artist}</p>}
-        {song?.description && <p className="text-zinc-500 text-sm mt-1">{song.description}</p>}
       </div>
+
+      {/* Compact timeline */}
+      {song && <SongTimeline song={song} mode="compact" />}
 
       {/* Tabs */}
       <Tabs defaultValue="media" className="w-full">
-        <TabsList className="bg-zinc-900 border border-zinc-800">
-          <TabsTrigger value="media" className="gap-1 data-[state=active]:bg-zinc-800">
+        <TabsList className="glass p-1 rounded-full h-auto gap-1">
+          <TabsTrigger value="media" className="rounded-full px-4 py-2 gap-1.5 data-[state=active]:bg-gradient-to-r data-[state=active]:from-violet-600 data-[state=active]:to-fuchsia-600 data-[state=active]:text-white">
             <Music2 size={14} /> Media
             {audioFiles.length > 0 && (
-              <span className="ml-1 text-xs bg-zinc-700 px-1.5 rounded">{audioFiles.length}</span>
+              <span className="ml-1 text-xs bg-white/20 px-1.5 rounded-full">{audioFiles.length}</span>
             )}
           </TabsTrigger>
-          <TabsTrigger value="notes" className="gap-1 data-[state=active]:bg-zinc-800">
+          <TabsTrigger value="notes" className="rounded-full px-4 py-2 gap-1.5 data-[state=active]:bg-gradient-to-r data-[state=active]:from-violet-600 data-[state=active]:to-fuchsia-600 data-[state=active]:text-white">
             <FileText size={14} /> Notes
           </TabsTrigger>
-          <TabsTrigger value="chart" className="gap-1 data-[state=active]:bg-zinc-800">
-            <Hash size={14} /> Number Chart
+          <TabsTrigger value="chart" className="rounded-full px-4 py-2 gap-1.5 data-[state=active]:bg-gradient-to-r data-[state=active]:from-violet-600 data-[state=active]:to-fuchsia-600 data-[state=active]:text-white">
+            <Hash size={14} /> Chart
+          </TabsTrigger>
+          <TabsTrigger value="structure" className="rounded-full px-4 py-2 gap-1.5 data-[state=active]:bg-gradient-to-r data-[state=active]:from-violet-600 data-[state=active]:to-fuchsia-600 data-[state=active]:text-white">
+            <ListTree size={14} /> Structure
+          </TabsTrigger>
+          <TabsTrigger value="dissect" className="rounded-full px-4 py-2 gap-1.5 data-[state=active]:bg-gradient-to-r data-[state=active]:from-violet-600 data-[state=active]:to-fuchsia-600 data-[state=active]:text-white">
+            <Sparkles size={14} /> AI
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="media" className="space-y-6 mt-4">
+        <TabsContent value="media" className="space-y-4 mt-6">
           {/* Audio Player */}
-          <div className="bg-zinc-900 rounded-lg p-4 border border-zinc-800">
-            <h3 className="text-sm font-medium text-zinc-400 mb-3 flex items-center gap-1">
-              <FileAudio size={14} /> Audio Tracks
-            </h3>
-            <AudioPlayer files={files} />
+          <div className="glass rounded-3xl p-6">
+            {song && <AudioPlayer files={files} song={song} />}
           </div>
 
           {/* PDF Files */}
           {pdfFiles.length > 0 && (
-            <div className="bg-zinc-900 rounded-lg p-4 border border-zinc-800">
-              <h3 className="text-sm font-medium text-zinc-400 mb-3 flex items-center gap-1">
-                <File size={14} /> Documents
+            <div className="glass rounded-3xl p-6">
+              <h3 className="text-xs uppercase tracking-wider text-zinc-500 mb-3 flex items-center gap-1">
+                <File size={12} /> Documents
               </h3>
-              <div className="space-y-2">
+              <div className="space-y-1">
                 {pdfFiles.map(f => (
                   <a
                     key={f.id}
                     href={f.file_url || '#'}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center gap-2 p-2 rounded hover:bg-zinc-800 text-sm text-zinc-300 transition-colors"
+                    className="flex items-center gap-3 p-3 rounded-xl hover:bg-white/5 text-sm transition-colors group"
                   >
-                    <File size={16} className="text-red-400 shrink-0" />
-                    {f.name}
+                    <div className="p-2 rounded-lg bg-red-500/10 text-red-400">
+                      <File size={16} />
+                    </div>
+                    <span className="flex-1 truncate group-hover:text-white">{f.name}</span>
                   </a>
                 ))}
               </div>
@@ -107,18 +125,18 @@ export default function SongPage() {
 
           {/* Other Files */}
           {otherFiles.length > 0 && (
-            <div className="bg-zinc-900 rounded-lg p-4 border border-zinc-800">
-              <h3 className="text-sm font-medium text-zinc-400 mb-3">Other Files</h3>
-              <div className="space-y-2">
+            <div className="glass rounded-3xl p-6">
+              <h3 className="text-xs uppercase tracking-wider text-zinc-500 mb-3">Other</h3>
+              <div className="space-y-1">
                 {otherFiles.map(f => (
                   <a
                     key={f.id}
                     href={f.file_url || '#'}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center gap-2 p-2 rounded hover:bg-zinc-800 text-sm text-zinc-300 transition-colors"
+                    className="flex items-center gap-3 p-3 rounded-xl hover:bg-white/5 text-sm transition-colors"
                   >
-                    <File size={16} className="text-zinc-500 shrink-0" />
+                    <File size={16} className="text-zinc-500" />
                     {f.name}
                   </a>
                 ))}
@@ -130,12 +148,61 @@ export default function SongPage() {
           <FileUpload songId={songId} onUpload={loadFiles} />
         </TabsContent>
 
-        <TabsContent value="notes" className="mt-4">
-          {song && <NotesEditor songId={songId} initialNotes={song.notes} />}
+        <TabsContent value="notes" className="mt-6">
+          <div className="glass rounded-3xl p-6">
+            {song && <NotesEditor songId={songId} initialNotes={song.notes} />}
+          </div>
         </TabsContent>
 
-        <TabsContent value="chart" className="mt-4">
-          <NumberChartEditor songId={songId} songKey={song?.key || null} />
+        <TabsContent value="chart" className="mt-6 space-y-4">
+          <div className="glass rounded-3xl p-6">
+            <NumberChartEditor
+              songId={songId}
+              songKey={song?.key || null}
+              audioFiles={files}
+              onDissectComplete={onDissectComplete}
+            />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="structure" className="mt-6">
+          <div className="glass rounded-3xl p-6">
+            {song && (
+              <StructureView
+                song={song}
+                audioFiles={files}
+                onSongChange={loadSong}
+              />
+            )}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="dissect" className="mt-6 space-y-4">
+          <div className="glass rounded-3xl p-6 space-y-4">
+            <div>
+              <h3 className="text-lg font-bold flex items-center gap-2">
+                <Sparkles size={18} className="text-violet-400" />
+                AI Dissection
+              </h3>
+              <p className="text-sm text-zinc-500 mt-1">
+                Run AI on the audio to extract chords, sections, and BPM. Generates a Nashville Number chart.
+              </p>
+            </div>
+            <DissectButton songId={songId} audioFiles={audioFiles} onComplete={onDissectComplete} />
+          </div>
+
+          {song?.dissection_status === 'processing' && (
+            <div className="glass rounded-3xl p-8 text-center text-zinc-400">
+              <Sparkles size={24} className="mx-auto mb-2 text-violet-400 animate-pulse" />
+              Processing audio... this can take 30-90 seconds.
+            </div>
+          )}
+
+          {song?.dissection_md && (
+            <div className="glass rounded-3xl p-8">
+              <DissectionViewer markdown={song.dissection_md} />
+            </div>
+          )}
         </TabsContent>
       </Tabs>
     </div>

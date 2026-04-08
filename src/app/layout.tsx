@@ -1,6 +1,14 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import ThemeToggle from "@/components/ThemeToggle";
+import { PlayerProvider } from "@/components/PlayerProvider";
+import { MetronomeProvider } from "@/components/MetronomeProvider";
+import MiniPlayer from "@/components/MiniPlayer";
+import { KeypadProvider } from "@/components/KeypadProvider";
+import ChartKeypad from "@/components/ChartKeypad";
+import Link from "next/link";
+import { Music } from "lucide-react";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -13,8 +21,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Azusa Rehearsal",
-  description: "Music rehearsal app for conferences and worship events",
+  title: "Rehearsal Studio",
+  description: "Modern music rehearsal app",
 };
 
 export default function RootLayout({
@@ -26,11 +34,42 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased dark`}
+      suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col bg-zinc-950 text-white">
-        <div className="max-w-4xl mx-auto px-4 py-6 w-full">
-          {children}
-        </div>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              try {
+                const t = localStorage.getItem('theme') || 'dark';
+                document.documentElement.classList.toggle('dark', t === 'dark');
+                document.documentElement.classList.toggle('light', t === 'light');
+              } catch(e) {}
+            `,
+          }}
+        />
+      </head>
+      <body className="min-h-full flex flex-col pb-32">
+        <PlayerProvider>
+          <MetronomeProvider>
+            <KeypadProvider>
+              <div className="max-w-5xl mx-auto px-4 py-6 w-full flex-1">
+                <nav className="flex items-center justify-between mb-8">
+                  <Link href="/" className="flex items-center gap-2 group">
+                    <div className="p-2 rounded-xl bg-gradient-to-br from-violet-600 to-fuchsia-600 group-hover:scale-110 transition-transform">
+                      <Music size={16} className="text-white" />
+                    </div>
+                    <span className="font-bold text-lg">Rehearsal</span>
+                  </Link>
+                  <ThemeToggle />
+                </nav>
+                {children}
+              </div>
+              <ChartKeypad />
+              <MiniPlayer />
+            </KeypadProvider>
+          </MetronomeProvider>
+        </PlayerProvider>
       </body>
     </html>
   );

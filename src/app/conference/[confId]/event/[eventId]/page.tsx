@@ -3,10 +3,9 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { ArrowLeft, Plus, Music, Users } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
+import { ArrowLeft, Plus, Users, ArrowUpRight, Clock } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from '@/components/ui/dialog';
@@ -38,51 +37,69 @@ export default function EventPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <Link href={`/conference/${confId}`} className="flex items-center gap-1 text-zinc-500 hover:text-zinc-300 text-sm">
+    <div className="space-y-8">
+      <Link href={`/conference/${confId}`} className="inline-flex items-center gap-1 text-zinc-500 hover:text-violet-400 text-sm transition-colors">
         <ArrowLeft size={16} /> Back to Events
       </Link>
 
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">{event?.name || 'Loading...'}</h1>
-          {event?.date && (
-            <p className="text-zinc-400 text-sm mt-1">
-              {new Date(event.date + 'T00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
-            </p>
-          )}
+      {/* Hero */}
+      <div className="glass rounded-3xl p-8 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-80 h-80 bg-gradient-to-br from-fuchsia-600/20 to-blue-600/20 blur-3xl -translate-y-1/2 translate-x-1/2" />
+        <div className="relative flex items-start justify-between">
+          <div>
+            <p className="text-xs uppercase tracking-wider text-fuchsia-400 mb-2">Event</p>
+            <h1 className="text-4xl font-bold tracking-tight mb-2">{event?.name || 'Loading...'}</h1>
+            {event?.date && (
+              <p className="text-zinc-400">
+                {new Date(event.date + 'T00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+              </p>
+            )}
+          </div>
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:scale-105 transition-transform text-white text-sm font-medium shadow-lg shadow-violet-600/20">
+              <Plus size={14} /> Set
+            </DialogTrigger>
+            <DialogContent className="bg-zinc-950/95 backdrop-blur-xl border-zinc-800">
+              <DialogHeader><DialogTitle>New Set</DialogTitle></DialogHeader>
+              <div className="space-y-3">
+                <Input placeholder="Artist / Worship Leader" value={form.name} onChange={e => setForm({...form, name: e.target.value})} className="bg-zinc-900/50 border-zinc-800 h-11" />
+                <Input type="time" value={form.start_time} onChange={e => setForm({...form, start_time: e.target.value})} className="bg-zinc-900/50 border-zinc-800 h-11" />
+                <Button onClick={create} className="w-full h-11 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500">Create Set</Button>
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger className="inline-flex items-center justify-center gap-1 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90">
-            <Plus size={14} /> Set
-          </DialogTrigger>
-          <DialogContent className="bg-zinc-900 border-zinc-700">
-            <DialogHeader><DialogTitle>New Set</DialogTitle></DialogHeader>
-            <div className="space-y-3">
-              <Input placeholder="Artist / Worship Leader" value={form.name} onChange={e => setForm({...form, name: e.target.value})} className="bg-zinc-800 border-zinc-700" />
-              <Input type="time" placeholder="Start Time" value={form.start_time} onChange={e => setForm({...form, start_time: e.target.value})} className="bg-zinc-800 border-zinc-700" />
-              <Button onClick={create} className="w-full">Create</Button>
-            </div>
-          </DialogContent>
-        </Dialog>
       </div>
 
-      <div className="grid gap-3">
-        {sets.map(s => (
-          <Link key={s.id} href={`/conference/${confId}/event/${eventId}/set/${s.id}`}>
-            <Card className="p-4 bg-zinc-900 border-zinc-800 hover:border-indigo-500/50 transition-colors cursor-pointer">
-              <div className="flex items-center gap-2">
-                <Users size={16} className="text-indigo-400" />
-                <h3 className="font-semibold text-white">{s.name}</h3>
+      {/* Sets */}
+      <div>
+        <h2 className="text-xs uppercase tracking-wider text-zinc-500 mb-3">Sets ({sets.length})</h2>
+        <div className="space-y-3">
+          {sets.map((s, i) => (
+            <Link key={s.id} href={`/conference/${confId}/event/${eventId}/set/${s.id}`} className="group block">
+              <div className="glass rounded-2xl p-5 transition-all hover:scale-[1.01] cursor-pointer">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="p-3 rounded-xl bg-gradient-to-br from-violet-600/20 to-fuchsia-600/20">
+                      <Users size={18} className="text-violet-400" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-lg">{s.name}</h3>
+                      {s.start_time && (
+                        <p className="text-sm text-zinc-500 flex items-center gap-1 mt-0.5">
+                          <Clock size={12} /> {s.start_time.slice(0, 5)}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <ArrowUpRight size={18} className="text-zinc-600 group-hover:text-white transition-colors" />
+                </div>
               </div>
-              {s.start_time && (
-                <p className="text-sm text-zinc-500 mt-1 ml-6">{s.start_time.slice(0, 5)}</p>
-              )}
-            </Card>
-          </Link>
-        ))}
+            </Link>
+          ))}
+        </div>
         {sets.length === 0 && (
-          <p className="text-center py-12 text-zinc-500">No sets yet. Add one to get started.</p>
+          <div className="glass rounded-2xl p-12 text-center text-zinc-500">No sets yet</div>
         )}
       </div>
     </div>
