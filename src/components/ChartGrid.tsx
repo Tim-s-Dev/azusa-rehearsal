@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, Copy } from 'lucide-react';
 import type { ChartMeasure } from '@/lib/types';
 import { useKeypad } from './KeypadProvider';
 
@@ -17,6 +17,8 @@ interface ChartGridProps {
   onChange: (next: ChartMeasure[]) => void;
   showSectionHeaders?: boolean;
   showAddRemove?: boolean;
+  /** Called when user clicks "duplicate" on a section header. Index is local to this slice. */
+  onDuplicateSection?: (sectionStartIdx: number) => void;
 }
 
 const SECTIONS = ['Intro', 'Verse', 'Pre-Chorus', 'Chorus', 'Bridge', 'Outro', 'Tag', 'Instrumental', 'Vamp'];
@@ -28,6 +30,7 @@ export default function ChartGrid({
   onChange,
   showSectionHeaders = true,
   showAddRemove = true,
+  onDuplicateSection,
 }: ChartGridProps) {
   const keypad = useKeypad();
   const measuresRef = useRef(measures);
@@ -43,8 +46,7 @@ export default function ChartGrid({
     onChange(next);
   };
 
-  // Register write/value handlers — these translate global cell coords back
-  // to this slice using measureOffset.
+  // Register write/value handlers
   useEffect(() => {
     const writer = (pos: { measureIdx: number; beatIdx: number }, value: string) => {
       const localIdx = pos.measureIdx - measureOffset;
@@ -65,6 +67,32 @@ export default function ChartGrid({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [measureOffset, keypad]);
 
+  // Register insert handler — keypad's "Add Measure" key calls this
+  useEffect(() => {
+    const inserter = (afterMeasureIdx: number) => {
+      const localIdx = afterMeasureIdx - measureOffset;
+      if (localIdx < 0 || localIdx >= measuresRef.current.length) return;
+      const next = [...measuresRef.current];
+      next.splice(localIdx + 1, 0, { beats: Array(beatsPerMeasure).fill('') });
+      onChange(next);
+    };
+    return keypad.registerInsertHandler(inserter);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [measureOffset, keypad, beatsPerMeasure]);
+
+  // Register out toggle handler — keypad's OUT key calls this
+  useEffect(() => {
+    const outToggler = (measureIdx: number) => {
+      const localIdx = measureIdx - measureOffset;
+      if (localIdx < 0 || localIdx >= measuresRef.current.length) return;
+      const next = [...measuresRef.current];
+      next[localIdx] = { ...next[localIdx], out: !next[localIdx].out };
+      onChange(next);
+    };
+    return keypad.registerOutHandler(outToggler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [measureOffset, keypad]);
+
   const handleCellTap = (e: React.MouseEvent<HTMLButtonElement>, mIdx: number, bIdx: number) => {
     e.stopPropagation();
     keypad.focusCell({ measureIdx: mIdx + measureOffset, beatIdx: bIdx }, e.currentTarget);
@@ -80,7 +108,7 @@ export default function ChartGrid({
     onChange(next);
   };
 
-  const addMeasure = (afterIdx: number) => {
+  const addMeasureBelow = (afterIdx: number) => {
     const next = [...measures];
     next.splice(afterIdx + 1, 0, { beats: Array(beatsPerMeasure).fill('') });
     onChange(next);
@@ -106,6 +134,15 @@ export default function ChartGrid({
                   <option key={s} value={s}>{s}</option>
                 ))}
               </select>
+              {onDuplicateSection && (
+                <button
+                  onClick={() => onDuplicateSection(mIdx)}
+                  className="p-1 rounded text-xs text-zinc-500 hover:text-violet-400 hover:bg-white/5 inline-flex items-center gap-1"
+                  title="Duplicate this section"
+                >
+                  <Copy size={11} /> Duplicate
+                </button>
+              )}
             </div>
           )}
           <div className="flex items-center gap-1 group">
@@ -113,39 +150,52 @@ export default function ChartGrid({
               {mIdx + measureOffset + 1}
             </div>
             <div className="flex gap-1 flex-1">
-              {measure.beats.map((beat, bIdx) => (
+              {measure.out ? (
+                // Whole measure is OUT — render single greyed badge spanning the row
                 <button
-                  key={bIdx}
                   type="button"
-                  data-cell={`${mIdx + measureOffset}-${bIdx}`}
-                  onClick={(e) => handleCellTap(e, mIdx, bIdx)}
-                  className={`flex-1 min-w-0 h-12 px-1 text-center font-mono rounded-md border transition-all ${
-                    beat && beat.length >= 4 ? 'text-xs' : beat && beat.length >= 3 ? 'text-sm' : 'text-base'
-                  } ${
-                    isFocused(mIdx, bIdx)
-                      ? 'bg-violet-600/30 border-violet-400 ring-2 ring-violet-400/50 text-white'
-                      : beat
-                        ? 'bg-zinc-900 border-zinc-700 text-white hover:border-zinc-500'
-                        : 'bg-zinc-900/50 border-zinc-800 text-zinc-600 hover:border-zinc-600'
-                  }`}
-                  title={beat || ''}
+                  data-cell={`${mIdx + measureOffset}-0`}
+                  onClick={(e) => handleCellTap(e, mIdx, 0)}
+                  className="flex-1 h-12 rounded-md border border-zinc-800 bg-zinc-900/30 text-zinc-600 font-mono text-xs uppercase tracking-widest hover:border-zinc-600"
+                  title="OUT — band rests this measure. Tap OUT key on keypad to toggle back."
                 >
-                  <span className="truncate block">{beat || '·'}</span>
+                  ◎ OUT
                 </button>
-              ))}
+              ) : (
+                measure.beats.map((beat, bIdx) => (
+                  <button
+                    key={bIdx}
+                    type="button"
+                    data-cell={`${mIdx + measureOffset}-${bIdx}`}
+                    onClick={(e) => handleCellTap(e, mIdx, bIdx)}
+                    className={`flex-1 min-w-0 h-12 px-1 text-center font-mono rounded-md border transition-all ${
+                      beat && beat.length >= 4 ? 'text-xs' : beat && beat.length >= 3 ? 'text-sm' : 'text-base'
+                    } ${
+                      isFocused(mIdx, bIdx)
+                        ? 'bg-violet-600/30 border-violet-400 ring-2 ring-violet-400/50 text-white'
+                        : beat
+                          ? 'bg-zinc-900 border-zinc-700 text-white hover:border-zinc-500'
+                          : 'bg-zinc-900/50 border-zinc-800 text-zinc-600 hover:border-zinc-600'
+                    }`}
+                    title={beat || ''}
+                  >
+                    <span className="truncate block">{beat || '·'}</span>
+                  </button>
+                ))
+              )}
             </div>
             {showAddRemove && (
-              <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+              <div className="flex gap-0.5 shrink-0">
                 <button
-                  onClick={() => addMeasure(mIdx)}
-                  className="p-1 text-zinc-600 hover:text-zinc-300"
+                  onClick={() => addMeasureBelow(mIdx)}
+                  className="p-1.5 rounded text-zinc-500 hover:text-emerald-400 hover:bg-white/5"
                   title="Add measure below"
                 >
                   <Plus size={14} />
                 </button>
                 <button
                   onClick={() => removeMeasure(mIdx)}
-                  className="p-1 text-zinc-600 hover:text-red-400"
+                  className="p-1.5 rounded text-zinc-500 hover:text-red-400 hover:bg-white/5"
                   title="Remove measure"
                 >
                   <Trash2 size={14} />

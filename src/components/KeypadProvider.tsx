@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, useRef, ReactNode } from 'react';
 
 export type KeypadMode = 'bar' | 'popover';
 
@@ -16,6 +16,8 @@ interface KeypadContextValue {
   focusedRect: DOMRect | null;
   totalMeasures: number;
   beatsPerMeasure: number;
+  /** Cell is "fresh" — first input replaces the placeholder/cleared value, then auto-advances. Subsequent input on same cell appends. */
+  isFresh: boolean;
   registerGrid: (measures: number, beats: number) => void;
   focusCell: (pos: CellPos, el: HTMLElement | null) => void;
   blur: () => void;
@@ -24,11 +26,14 @@ interface KeypadContextValue {
   clearBeat: () => void;
   advance: () => void;
   retreat: () => void;
+  insertMeasureAfter: () => void;
+  toggleOut: () => void;
   // Subscribe handlers
-  onWriteHandlers: ((pos: CellPos, value: string) => void)[];
   registerWriteHandler: (h: (pos: CellPos, value: string) => void) => () => void;
   getCurrentValue: () => string;
   registerValueGetter: (g: (pos: CellPos) => string | undefined) => () => void;
+  registerInsertHandler: (h: (afterMeasureIdx: number) => void) => () => void;
+  registerOutHandler: (h: (measureIdx: number) => void) => () => void;
 }
 
 const KeypadContext = createContext<KeypadContextValue | null>(null);
@@ -39,8 +44,11 @@ export function KeypadProvider({ children }: { children: ReactNode }) {
   const [focusedRect, setFocusedRect] = useState<DOMRect | null>(null);
   const [totalMeasures, setTotalMeasures] = useState(1);
   const [beatsPerMeasure, setBeatsPerMeasure] = useState(4);
-  const [writeHandlers, setWriteHandlers] = useState<((pos: CellPos, value: string) => void)[]>([]);
-  const [valueGetters, setValueGetters] = useState<((pos: CellPos) => string | undefined)[]>([]);
+  const [isFresh, setIsFresh] = useState(true);
+  const writeHandlers = useRef<((pos: CellPos, value: string) => void)[]>([]);
+  const valueGetters = useRef<((pos: CellPos) => string | undefined)[]>([]);
+  const insertHandlers = useRef<((afterMeasureIdx: number) => void)[]>([]);
+  const outHandlers = useRef<((measureIdx: number) => void)[]>([]);
 
   // Load mode preference
   useEffect(() => {
@@ -63,6 +71,7 @@ export function KeypadProvider({ children }: { children: ReactNode }) {
 
   const focusCell = useCallback((pos: CellPos, el: HTMLElement | null) => {
     setFocusedCell(pos);
+    setIsFresh(true);
     if (el) setFocusedRect(el.getBoundingClientRect());
   }, []);
 
@@ -72,41 +81,49 @@ export function KeypadProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const registerWriteHandler = useCallback((h: (pos: CellPos, value: string) => void) => {
-    setWriteHandlers(prev => [...prev, h]);
-    return () => setWriteHandlers(prev => prev.filter(x => x !== h));
+    writeHandlers.current.push(h);
+    return () => {
+      writeHandlers.current = writeHandlers.current.filter(x => x !== h);
+    };
   }, []);
 
   const registerValueGetter = useCallback((g: (pos: CellPos) => string | undefined) => {
-    setValueGetters(prev => [...prev, g]);
-    return () => setValueGetters(prev => prev.filter(x => x !== g));
+    valueGetters.current.push(g);
+    return () => {
+      valueGetters.current = valueGetters.current.filter(x => x !== g);
+    };
+  }, []);
+
+  const registerInsertHandler = useCallback((h: (afterMeasureIdx: number) => void) => {
+    insertHandlers.current.push(h);
+    return () => {
+      insertHandlers.current = insertHandlers.current.filter(x => x !== h);
+    };
+  }, []);
+
+  const registerOutHandler = useCallback((h: (measureIdx: number) => void) => {
+    outHandlers.current.push(h);
+    return () => {
+      outHandlers.current = outHandlers.current.filter(x => x !== h);
+    };
   }, []);
 
   const getCurrentValue = useCallback(() => {
     if (!focusedCell) return '';
-    for (const g of valueGetters) {
+    for (const g of valueGetters.current) {
       const v = g(focusedCell);
       if (v !== undefined) return v;
     }
     return '';
-  }, [focusedCell, valueGetters]);
+  }, [focusedCell]);
 
   const writeToCell = useCallback((value: string) => {
     if (!focusedCell) return;
-    writeHandlers.forEach(h => h(focusedCell, value));
-  }, [focusedCell, writeHandlers]);
+    writeHandlers.current.forEach(h => h(focusedCell, value));
+  }, [focusedCell]);
 
   const setBeatValue = useCallback((value: string) => {
     writeToCell(value);
-  }, [writeToCell]);
-
-  const appendChar = useCallback((c: string) => {
-    if (!focusedCell) return;
-    const current = getCurrentValue();
-    writeToCell(current + c);
-  }, [focusedCell, getCurrentValue, writeToCell]);
-
-  const clearBeat = useCallback(() => {
-    writeToCell('');
   }, [writeToCell]);
 
   const advance = useCallback(() => {
@@ -118,15 +135,11 @@ export function KeypadProvider({ children }: { children: ReactNode }) {
       nextMeasure += 1;
     }
     if (nextMeasure >= totalMeasures) return;
-    // Find the DOM element for the next cell
     const el = document.querySelector<HTMLElement>(`[data-cell="${nextMeasure}-${nextBeat}"]`);
-    if (el) {
-      el.focus();
-      focusCell({ measureIdx: nextMeasure, beatIdx: nextBeat }, el);
-    } else {
-      setFocusedCell({ measureIdx: nextMeasure, beatIdx: nextBeat });
-    }
-  }, [focusedCell, beatsPerMeasure, totalMeasures, focusCell]);
+    setFocusedCell({ measureIdx: nextMeasure, beatIdx: nextBeat });
+    setIsFresh(true);
+    if (el) setFocusedRect(el.getBoundingClientRect());
+  }, [focusedCell, beatsPerMeasure, totalMeasures]);
 
   const retreat = useCallback(() => {
     if (!focusedCell) return;
@@ -138,13 +151,45 @@ export function KeypadProvider({ children }: { children: ReactNode }) {
     }
     if (prevMeasure < 0) return;
     const el = document.querySelector<HTMLElement>(`[data-cell="${prevMeasure}-${prevBeat}"]`);
-    if (el) {
-      el.focus();
-      focusCell({ measureIdx: prevMeasure, beatIdx: prevBeat }, el);
+    setFocusedCell({ measureIdx: prevMeasure, beatIdx: prevBeat });
+    setIsFresh(true);
+    if (el) setFocusedRect(el.getBoundingClientRect());
+  }, [focusedCell, beatsPerMeasure]);
+
+  const appendChar = useCallback((c: string) => {
+    if (!focusedCell) return;
+    if (isFresh) {
+      // Fresh cell: replace, then mark dirty (so subsequent taps append)
+      writeToCell(c);
+      setIsFresh(false);
     } else {
-      setFocusedCell({ measureIdx: prevMeasure, beatIdx: prevBeat });
+      const current = getCurrentValue();
+      writeToCell(current + c);
     }
-  }, [focusedCell, beatsPerMeasure, focusCell]);
+  }, [focusedCell, isFresh, getCurrentValue, writeToCell]);
+
+  const clearBeat = useCallback(() => {
+    writeToCell('');
+    setIsFresh(true);
+  }, [writeToCell]);
+
+  const insertMeasureAfter = useCallback(() => {
+    if (!focusedCell) return;
+    insertHandlers.current.forEach(h => h(focusedCell.measureIdx));
+    // Move focus to first beat of the newly-inserted measure
+    setTimeout(() => {
+      const newMeasureIdx = focusedCell.measureIdx + 1;
+      const el = document.querySelector<HTMLElement>(`[data-cell="${newMeasureIdx}-0"]`);
+      setFocusedCell({ measureIdx: newMeasureIdx, beatIdx: 0 });
+      setIsFresh(true);
+      if (el) setFocusedRect(el.getBoundingClientRect());
+    }, 50);
+  }, [focusedCell]);
+
+  const toggleOut = useCallback(() => {
+    if (!focusedCell) return;
+    outHandlers.current.forEach(h => h(focusedCell.measureIdx));
+  }, [focusedCell]);
 
   return (
     <KeypadContext.Provider
@@ -152,13 +197,16 @@ export function KeypadProvider({ children }: { children: ReactNode }) {
         mode, setMode,
         focusedCell, focusedRect,
         totalMeasures, beatsPerMeasure,
+        isFresh,
         registerGrid, focusCell, blur,
         appendChar, setBeatValue, clearBeat,
         advance, retreat,
-        onWriteHandlers: writeHandlers,
+        insertMeasureAfter, toggleOut,
         registerWriteHandler,
         getCurrentValue,
         registerValueGetter,
+        registerInsertHandler,
+        registerOutHandler,
       }}
     >
       {children}

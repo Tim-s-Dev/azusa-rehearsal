@@ -22,6 +22,8 @@ export default function NumberChartEditor({ songId, songKey, audioFiles = [], on
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [dissecting, setDissecting] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const keypad = useKeypad();
 
   const dissect = async () => {
@@ -79,14 +81,44 @@ export default function NumberChartEditor({ songId, songKey, audioFiles = [], on
       }),
     });
     setSaving(false);
+    setDirty(false);
+    setLastSaved(new Date());
   }, [songId, songKey, timeSignature, measures]);
 
+  // Auto-save every 5s when dirty
+  useEffect(() => {
+    if (!dirty) return;
+    const t = setTimeout(() => { save(); }, 5000);
+    return () => clearTimeout(t);
+  }, [dirty, save]);
+
+  // Wrap setMeasures to mark dirty
+  const updateMeasures = useCallback((next: ChartMeasure[] | ((prev: ChartMeasure[]) => ChartMeasure[])) => {
+    setMeasures(prev => {
+      const value = typeof next === 'function' ? next(prev) : next;
+      return value;
+    });
+    setDirty(true);
+  }, []);
+
   const addMeasureAtEnd = () => {
-    setMeasures([...measures, { beats: Array(beatsPerMeasure).fill('') }]);
+    updateMeasures([...measures, { beats: Array(beatsPerMeasure).fill('') }]);
   };
 
   const addSectionAtEnd = () => {
-    setMeasures([...measures, { section: 'Verse', beats: Array(beatsPerMeasure).fill('') }]);
+    updateMeasures([...measures, { section: 'Verse', beats: Array(beatsPerMeasure).fill('') }]);
+  };
+
+  const duplicateSection = (sectionStartIdx: number) => {
+    // Find the end of this section (next index with .section, or end of array)
+    let sectionEnd = measures.length;
+    for (let i = sectionStartIdx + 1; i < measures.length; i++) {
+      if (measures[i].section !== undefined) { sectionEnd = i; break; }
+    }
+    const slice = measures.slice(sectionStartIdx, sectionEnd).map(m => ({ ...m, beats: [...m.beats] }));
+    const next = [...measures];
+    next.splice(sectionEnd, 0, ...slice);
+    updateMeasures(next);
   };
 
   if (!loaded) return <div className="text-zinc-500 py-8 text-center">Loading chart...</div>;
@@ -141,7 +173,8 @@ export default function NumberChartEditor({ songId, songKey, audioFiles = [], on
         measures={measures}
         measureOffset={0}
         beatsPerMeasure={beatsPerMeasure}
-        onChange={setMeasures}
+        onChange={updateMeasures}
+        onDuplicateSection={duplicateSection}
       />
 
       {/* Add buttons */}
@@ -154,8 +187,11 @@ export default function NumberChartEditor({ songId, songKey, audioFiles = [], on
         </Button>
       </div>
 
-      <div className="text-xs text-zinc-600 space-y-0.5 border-t border-zinc-800 pt-3">
-        <p>Tap a beat box to open the keypad. Numbers replace, modifiers append.</p>
+      <div className="text-xs text-zinc-600 space-y-0.5 border-t border-zinc-800 pt-3 flex items-center justify-between">
+        <p>Tap a beat box to open the keypad. Numbers append. Tap Clear to reset a cell.</p>
+        <span className={dirty ? 'text-amber-400' : lastSaved ? 'text-emerald-500' : ''}>
+          {saving ? 'Saving…' : dirty ? 'Unsaved (auto-saves in 5s)' : lastSaved ? `Saved ${lastSaved.toLocaleTimeString()}` : ''}
+        </span>
       </div>
     </div>
   );

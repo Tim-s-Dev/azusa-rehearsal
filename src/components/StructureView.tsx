@@ -148,7 +148,7 @@ export default function StructureView({ song, audioFiles, onSongChange }: Struct
   // Auto-save chart after 2s of inactivity
   useEffect(() => {
     if (!dirty) return;
-    const t = setTimeout(saveChart, 2000);
+    const t = setTimeout(saveChart, 5000);
     return () => clearTimeout(t);
   }, [dirty, saveChart]);
 

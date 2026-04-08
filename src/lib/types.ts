@@ -116,6 +116,25 @@ export interface NumberChart {
 }
 
 export interface ChartMeasure {
-  section?: string; // "Intro", "Verse", "Chorus", etc.
-  beats: string[]; // Nashville numbers per beat, e.g. ["1", "4", "5", "1"]
+  type?: 'measure';
+  section?: string;
+  beats: string[];
+  out?: boolean;
+}
+
+export interface ChartNote {
+  type: 'note';
+  text: string;
+  color?: 'violet' | 'fuchsia' | 'blue' | 'emerald' | 'amber' | 'red';
+}
+
+export interface ChartLyric {
+  type: 'lyric';
+  text: string;
+}
+
+export type ChartItem = ChartMeasure | ChartNote | ChartLyric;
+
+export function isMeasure(item: ChartItem): item is ChartMeasure {
+  return !item.type || item.type === 'measure';
 }
