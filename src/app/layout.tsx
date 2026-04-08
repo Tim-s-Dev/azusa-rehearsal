@@ -61,7 +61,15 @@ export default function RootLayout({
                     </div>
                     <span className="font-bold text-lg">Rehearsal</span>
                   </Link>
-                  <ThemeToggle />
+                  <div className="flex items-center gap-2">
+                    <Link
+                      href="/songs"
+                      className="px-3 py-1.5 rounded-full text-xs font-semibold bg-white/5 hover:bg-white/10 text-zinc-300 transition-colors"
+                    >
+                      Songs
+                    </Link>
+                    <ThemeToggle />
+                  </div>
                 </nav>
                 {children}
               </div>
