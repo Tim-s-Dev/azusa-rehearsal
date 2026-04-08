@@ -3,9 +3,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Plus, Save, Sparkles, Keyboard } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import type { ChartMeasure, SongFile } from '@/lib/types';
+import type { ChartItem, ChartMeasure, SongFile } from '@/lib/types';
+import { isMeasure } from '@/lib/types';
 import { useKeypad } from './KeypadProvider';
 import ChartGrid from './ChartGrid';
+import MetronomeControls from './MetronomeControls';
 
 interface NumberChartEditorProps {
   songId: string;
@@ -15,8 +17,8 @@ interface NumberChartEditorProps {
 }
 
 export default function NumberChartEditor({ songId, songKey, audioFiles = [], onDissectComplete }: NumberChartEditorProps) {
-  const [measures, setMeasures] = useState<ChartMeasure[]>([
-    { section: 'Intro', beats: ['', '', '', ''] },
+  const [items, setItems] = useState<ChartItem[]>([
+    { type: 'measure', section: 'Intro', beats: ['', '', '', ''] },
   ]);
   const [timeSignature, setTimeSignature] = useState('4/4');
   const [saving, setSaving] = useState(false);
@@ -24,6 +26,7 @@ export default function NumberChartEditor({ songId, songKey, audioFiles = [], on
   const [dissecting, setDissecting] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [showMetronome, setShowMetronome] = useState(false);
   const keypad = useKeypad();
 
   const dissect = async () => {
@@ -39,7 +42,7 @@ export default function NumberChartEditor({ songId, songKey, audioFiles = [], on
       });
       const r = await fetch(`/api/charts?song_id=${songId}`).then(r => r.json());
       if (r && r.chart_data) {
-        setMeasures(r.chart_data);
+        setItems(r.chart_data);
       }
       onDissectComplete?.();
     } finally {
@@ -55,7 +58,7 @@ export default function NumberChartEditor({ songId, songKey, audioFiles = [], on
       .then(r => r.json())
       .then(data => {
         if (data && data.chart_data && data.chart_data.length > 0) {
-          setMeasures(data.chart_data);
+          setItems(data.chart_data);
           if (data.time_signature) setTimeSignature(data.time_signature);
         }
         setLoaded(true);
@@ -63,10 +66,10 @@ export default function NumberChartEditor({ songId, songKey, audioFiles = [], on
       .catch(() => setLoaded(true));
   }, [songId]);
 
-  // Tell the keypad how big the grid is
+  // Tell the keypad how big the grid is (use total items so navigation can skip non-measure)
   useEffect(() => {
-    keypad.registerGrid(measures.length, beatsPerMeasure);
-  }, [measures.length, beatsPerMeasure, keypad]);
+    keypad.registerGrid(items.length, beatsPerMeasure);
+  }, [items.length, beatsPerMeasure, keypad]);
 
   const save = useCallback(async () => {
     setSaving(true);
@@ -77,13 +80,13 @@ export default function NumberChartEditor({ songId, songKey, audioFiles = [], on
         song_id: songId,
         key: songKey,
         time_signature: timeSignature,
-        chart_data: measures,
+        chart_data: items,
       }),
     });
     setSaving(false);
     setDirty(false);
     setLastSaved(new Date());
-  }, [songId, songKey, timeSignature, measures]);
+  }, [songId, songKey, timeSignature, items]);
 
   // Auto-save every 5s when dirty
   useEffect(() => {
@@ -92,33 +95,33 @@ export default function NumberChartEditor({ songId, songKey, audioFiles = [], on
     return () => clearTimeout(t);
   }, [dirty, save]);
 
-  // Wrap setMeasures to mark dirty
-  const updateMeasures = useCallback((next: ChartMeasure[] | ((prev: ChartMeasure[]) => ChartMeasure[])) => {
-    setMeasures(prev => {
-      const value = typeof next === 'function' ? next(prev) : next;
-      return value;
-    });
+  const updateItems = useCallback((next: ChartItem[]) => {
+    setItems(next);
     setDirty(true);
   }, []);
 
   const addMeasureAtEnd = () => {
-    updateMeasures([...measures, { beats: Array(beatsPerMeasure).fill('') }]);
+    updateItems([...items, { type: 'measure', beats: Array(beatsPerMeasure).fill('') }]);
   };
 
   const addSectionAtEnd = () => {
-    updateMeasures([...measures, { section: 'Verse', beats: Array(beatsPerMeasure).fill('') }]);
+    updateItems([...items, { type: 'measure', section: 'Verse', beats: Array(beatsPerMeasure).fill('') }]);
   };
 
   const duplicateSection = (sectionStartIdx: number) => {
-    // Find the end of this section (next index with .section, or end of array)
-    let sectionEnd = measures.length;
-    for (let i = sectionStartIdx + 1; i < measures.length; i++) {
-      if (measures[i].section !== undefined) { sectionEnd = i; break; }
+    // Find the end of this section (next index where measure has .section, or end of array)
+    let sectionEnd = items.length;
+    for (let i = sectionStartIdx + 1; i < items.length; i++) {
+      const it = items[i];
+      if (isMeasure(it) && it.section !== undefined) { sectionEnd = i; break; }
     }
-    const slice = measures.slice(sectionStartIdx, sectionEnd).map(m => ({ ...m, beats: [...m.beats] }));
-    const next = [...measures];
+    const slice = items.slice(sectionStartIdx, sectionEnd).map(item => {
+      if (isMeasure(item)) return { ...item, beats: [...item.beats] };
+      return { ...item };
+    });
+    const next = [...items];
     next.splice(sectionEnd, 0, ...slice);
-    updateMeasures(next);
+    updateItems(next);
   };
 
   if (!loaded) return <div className="text-zinc-500 py-8 text-center">Loading chart...</div>;
@@ -127,7 +130,7 @@ export default function NumberChartEditor({ songId, songKey, audioFiles = [], on
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3 flex-wrap">
           <div className="text-sm text-zinc-400">
             Key: <span className="font-bold text-white">{songKey || '?'}</span>
           </div>
@@ -149,6 +152,14 @@ export default function NumberChartEditor({ songId, songKey, audioFiles = [], on
             <Keyboard size={12} />
             {keypad.mode === 'bar' ? 'Bar' : 'Popover'}
           </button>
+          <button
+            onClick={() => setShowMetronome(!showMetronome)}
+            className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded ${
+              showMetronome ? 'bg-violet-500/20 text-violet-300' : 'bg-white/5 text-zinc-400 hover:bg-white/10'
+            }`}
+          >
+            🥁 Click
+          </button>
         </div>
         <div className="flex items-center gap-2">
           {audioFiles.filter(f => f.file_type === 'audio').length > 0 && (
@@ -168,12 +179,19 @@ export default function NumberChartEditor({ songId, songKey, audioFiles = [], on
         </div>
       </div>
 
+      {/* Inline metronome panel */}
+      {showMetronome && (
+        <div className="glass rounded-xl p-3">
+          <MetronomeControls />
+        </div>
+      )}
+
       {/* Chart Grid */}
       <ChartGrid
-        measures={measures}
-        measureOffset={0}
+        items={items}
+        itemOffset={0}
         beatsPerMeasure={beatsPerMeasure}
-        onChange={updateMeasures}
+        onChange={updateItems}
         onDuplicateSection={duplicateSection}
       />
 

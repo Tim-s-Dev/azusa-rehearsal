@@ -1,11 +1,11 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { ChevronDown, ChevronRight, Save, Play, Pause, Crosshair, Radio, Plus, Trash2, Pencil, Sparkles } from 'lucide-react';
+import { ChevronDown, ChevronRight, Play, Pause, Crosshair, Radio, Plus, Trash2, Pencil, Sparkles, GripVertical, Copy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import type { Song, SongFile, ChartMeasure, SongStructureSection, SectionType } from '@/lib/types';
-import { SECTION_COLORS, normalizeSectionType } from '@/lib/types';
+import type { Song, SongFile, ChartItem, SongStructureSection, SectionType } from '@/lib/types';
+import { SECTION_COLORS, normalizeSectionType, isMeasure } from '@/lib/types';
 import ChartGrid from './ChartGrid';
 import { useKeypad } from './KeypadProvider';
 import { usePlayer } from './PlayerProvider';
@@ -58,7 +58,7 @@ export default function StructureView({ song, audioFiles, onSongChange }: Struct
   const player = usePlayer();
   const keypad = useKeypad();
   const [sections, setSections] = useState<SongStructureSection[]>(() => normalizeStructure(song.structure));
-  const [measures, setMeasures] = useState<ChartMeasure[]>([]);
+  const [measures, setMeasures] = useState<ChartItem[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -66,6 +66,8 @@ export default function StructureView({ song, audioFiles, onSongChange }: Struct
   const [liveTag, setLiveTag] = useState(false);
   const [editingTimestampIdx, setEditingTimestampIdx] = useState<number | null>(null);
   const [dissecting, setDissecting] = useState(false);
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
   const sectionRefs = useRef<(HTMLDivElement | null)[]>([]);
 
   // Sync sections from song prop changes
@@ -124,7 +126,7 @@ export default function StructureView({ song, audioFiles, onSongChange }: Struct
     onSongChange();
   }, [song.id, onSongChange]);
 
-  const persistChart = useCallback(async (next: ChartMeasure[]) => {
+  const persistChart = useCallback(async (next: ChartItem[]) => {
     setMeasures(next);
     setDirty(true);
   }, []);
@@ -208,6 +210,61 @@ export default function StructureView({ song, audioFiles, onSongChange }: Struct
     if (sections.length <= 1) return;
     const next = sections.filter((_, i) => i !== idx);
     persistStructure(next);
+  };
+
+  /**
+   * Move a section from one index to another. Reorders BOTH:
+   * - song.structure[] (the section metadata)
+   * - chart_data[] (the chart items, grouped by section)
+   */
+  const reorderSection = (from: number, to: number) => {
+    if (from === to || from < 0 || to < 0 || from >= sections.length || to >= sections.length) return;
+
+    // Reorder structure array
+    const nextSections = [...sections];
+    const [moved] = nextSections.splice(from, 1);
+    nextSections.splice(to, 0, moved);
+
+    // Reorder chart items: rebuild from groups in new order
+    const orderedGroups: ChartItem[] = [];
+    const groupOrder: number[] = [];
+    for (let i = 0; i < sections.length; i++) groupOrder.push(i);
+    const [movedGroup] = groupOrder.splice(from, 1);
+    groupOrder.splice(to, 0, movedGroup);
+    for (const i of groupOrder) {
+      const g = groups[i];
+      if (g) orderedGroups.push(...g.measures);
+    }
+
+    persistStructure(nextSections);
+    persistChart(orderedGroups);
+  };
+
+  const duplicateSection = (idx: number) => {
+    const sec = sections[idx];
+    const group = groups[idx];
+    if (!sec || !group) return;
+    // Clone the section with name suffix
+    const newSec: SongStructureSection = {
+      ...sec,
+      name: sec.name + ' (copy)',
+      markers: [...(sec.markers || [])],
+    };
+    const nextSections = [...sections];
+    nextSections.splice(idx + 1, 0, newSec);
+
+    // Clone the chart items for this section
+    const cloned = group.measures.map(item => {
+      if (isMeasure(item)) return { ...item, beats: [...item.beats] };
+      return { ...item };
+    });
+    const nextItems = [...measures];
+    // Insert cloned items right after this group
+    const insertAt = group.offset + group.measures.length;
+    nextItems.splice(insertAt, 0, ...cloned);
+
+    persistStructure(nextSections);
+    persistChart(nextItems);
   };
 
   const addSectionAtCurrentTime = (type: SectionType, label?: string) => {
@@ -321,13 +378,41 @@ export default function StructureView({ song, audioFiles, onSongChange }: Struct
             <div
               key={i}
               ref={(el) => { sectionRefs.current[i] = el; }}
+              draggable
+              onDragStart={(e) => {
+                setDragIdx(i);
+                e.dataTransfer.effectAllowed = 'move';
+              }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                if (dragOverIdx !== i) setDragOverIdx(i);
+              }}
+              onDragLeave={() => {
+                if (dragOverIdx === i) setDragOverIdx(null);
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (dragIdx !== null && dragIdx !== i) {
+                  reorderSection(dragIdx, i);
+                }
+                setDragIdx(null);
+                setDragOverIdx(null);
+              }}
+              onDragEnd={() => {
+                setDragIdx(null);
+                setDragOverIdx(null);
+              }}
               className={`glass rounded-2xl overflow-hidden transition-all ${
                 isCurrent ? `ring-2 ring-violet-400/60 shadow-lg ${colors.glow}` : ''
-              }`}
+              } ${dragIdx === i ? 'opacity-40' : ''} ${dragOverIdx === i && dragIdx !== i ? 'ring-2 ring-violet-400 scale-[1.01]' : ''}`}
             >
               {/* Section header */}
               <div className={`${colors.bg} ${colors.border} border-b`}>
                 <div className="flex items-center gap-2 p-3">
+                  <div className="cursor-grab active:cursor-grabbing text-zinc-500 hover:text-zinc-300 shrink-0" title="Drag to reorder">
+                    <GripVertical size={14} />
+                  </div>
                   <button
                     onClick={() => toggleExpand(i)}
                     className="p-1 rounded hover:bg-white/10 shrink-0"
@@ -359,6 +444,13 @@ export default function StructureView({ song, audioFiles, onSongChange }: Struct
                   <span className="text-[10px] text-zinc-500 font-mono shrink-0">
                     {Math.round(sectionDur)}s · {group?.measures.length || 0}m
                   </span>
+                  <button
+                    onClick={() => duplicateSection(i)}
+                    className="p-1 rounded hover:bg-white/10 text-zinc-500 hover:text-violet-400 shrink-0"
+                    title="Duplicate section"
+                  >
+                    <Copy size={12} />
+                  </button>
                   <button
                     onClick={() => setEditingTimestampIdx(editingTimestampIdx === i ? null : i)}
                     className="p-1 rounded hover:bg-white/10 shrink-0"
@@ -450,10 +542,10 @@ export default function StructureView({ song, audioFiles, onSongChange }: Struct
                 <div className="p-3 space-y-2">
                   {group && group.measures.length > 0 ? (
                     <ChartGrid
-                      measures={group.measures}
-                      measureOffset={group.offset}
+                      items={group.measures}
+                      itemOffset={group.offset}
                       onChange={(updatedSlice) => {
-                        // Splice the updated slice back into full measures
+                        // Splice the updated slice back into full chart items
                         const next = [...measures];
                         next.splice(group.offset, group.measures.length, ...updatedSlice);
                         persistChart(next);
@@ -463,7 +555,7 @@ export default function StructureView({ song, audioFiles, onSongChange }: Struct
                     />
                   ) : (
                     <p className="text-xs text-zinc-600 text-center py-4">
-                      No chart measures for this section yet.
+                      No chart items for this section yet.
                     </p>
                   )}
                 </div>

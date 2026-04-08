@@ -38,12 +38,20 @@ export default function SongPage() {
 
   return (
     <div className="space-y-6">
-      <Link
-        href={`/conference/${confId}/event/${eventId}/set/${setId}`}
-        className="inline-flex items-center gap-1 text-zinc-500 hover:text-violet-400 text-sm transition-colors"
-      >
-        <ArrowLeft size={16} /> Back
-      </Link>
+      <div className="flex items-center justify-between">
+        <Link
+          href={`/conference/${confId}/event/${eventId}/set/${setId}`}
+          className="inline-flex items-center gap-1 text-zinc-500 hover:text-violet-400 text-sm transition-colors"
+        >
+          <ArrowLeft size={16} /> Back
+        </Link>
+        <Link
+          href={`/live/${songId}`}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-red-600 to-fuchsia-600 hover:scale-105 transition-transform text-white text-xs font-bold shadow-lg shadow-red-600/30"
+        >
+          ● LIVE MODE
+        </Link>
+      </div>
 
       {/* Song Header - hero card */}
       <div className="glass rounded-3xl p-8 relative overflow-hidden">

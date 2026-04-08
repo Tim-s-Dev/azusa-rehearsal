@@ -1,20 +1,18 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
-import { Plus, Trash2, Copy } from 'lucide-react';
-import type { ChartMeasure } from '@/lib/types';
+import { useEffect, useRef, useState } from 'react';
+import { Plus, Trash2, Copy, MessageSquare, Mic, X } from 'lucide-react';
+import type { ChartMeasure, ChartItem, ChartNote, ChartLyric } from '@/lib/types';
+import { isMeasure } from '@/lib/types';
 import { useKeypad } from './KeypadProvider';
 
 interface ChartGridProps {
-  measures: ChartMeasure[];
-  /**
-   * Offset of the FIRST measure passed in, relative to the global chart.
-   * Used so the keypad's data-cell coordinates point to the right index in
-   * the parent's full measures array.
-   */
-  measureOffset?: number;
+  /** Full ChartItem list (measures + notes + lyrics interleaved) */
+  items: ChartItem[];
+  /** Offset of the FIRST item passed in, relative to the parent's full items array */
+  itemOffset?: number;
   beatsPerMeasure?: number;
-  onChange: (next: ChartMeasure[]) => void;
+  onChange: (next: ChartItem[]) => void;
   showSectionHeaders?: boolean;
   showAddRemove?: boolean;
   /** Called when user clicks "duplicate" on a section header. Index is local to this slice. */
@@ -22,10 +20,19 @@ interface ChartGridProps {
 }
 
 const SECTIONS = ['Intro', 'Verse', 'Pre-Chorus', 'Chorus', 'Bridge', 'Outro', 'Tag', 'Instrumental', 'Vamp'];
+const NOTE_COLORS = ['violet', 'fuchsia', 'blue', 'emerald', 'amber', 'red'] as const;
+const NOTE_COLOR_CLASSES: Record<string, { bg: string; border: string; text: string }> = {
+  violet:  { bg: 'bg-violet-500/10',  border: 'border-violet-500/40',  text: 'text-violet-300' },
+  fuchsia: { bg: 'bg-fuchsia-500/10', border: 'border-fuchsia-500/40', text: 'text-fuchsia-300' },
+  blue:    { bg: 'bg-blue-500/10',    border: 'border-blue-500/40',    text: 'text-blue-300' },
+  emerald: { bg: 'bg-emerald-500/10', border: 'border-emerald-500/40', text: 'text-emerald-300' },
+  amber:   { bg: 'bg-amber-500/10',   border: 'border-amber-500/40',   text: 'text-amber-300' },
+  red:     { bg: 'bg-red-500/10',     border: 'border-red-500/40',     text: 'text-red-300' },
+};
 
 export default function ChartGrid({
-  measures,
-  measureOffset = 0,
+  items,
+  itemOffset = 0,
   beatsPerMeasure = 4,
   onChange,
   showSectionHeaders = true,
@@ -33,178 +40,315 @@ export default function ChartGrid({
   onDuplicateSection,
 }: ChartGridProps) {
   const keypad = useKeypad();
-  const measuresRef = useRef(measures);
-  useEffect(() => { measuresRef.current = measures; }, [measures]);
+  const itemsRef = useRef(items);
+  useEffect(() => { itemsRef.current = items; }, [items]);
+  const [editingItem, setEditingItem] = useState<number | null>(null);
 
-  const updateBeat = (mIdx: number, bIdx: number, value: string) => {
-    const next = [...measuresRef.current];
-    if (!next[mIdx]) return;
-    next[mIdx] = {
-      ...next[mIdx],
-      beats: next[mIdx].beats.map((b, i) => (i === bIdx ? value : b)),
+  // Map global itemIdx (only counting measures, including itemOffset) to update beats
+  const updateBeat = (globalItemIdx: number, bIdx: number, value: string) => {
+    const next = [...itemsRef.current];
+    const localIdx = globalItemIdx - itemOffset;
+    if (localIdx < 0 || localIdx >= next.length) return;
+    const item = next[localIdx];
+    if (!isMeasure(item)) return;
+    next[localIdx] = {
+      ...item,
+      beats: item.beats.map((b, i) => (i === bIdx ? value : b)),
     };
     onChange(next);
   };
 
-  // Register write/value handlers
+  // Register write handler — uses global itemIdx
   useEffect(() => {
     const writer = (pos: { measureIdx: number; beatIdx: number }, value: string) => {
-      const localIdx = pos.measureIdx - measureOffset;
-      if (localIdx < 0 || localIdx >= measuresRef.current.length) return;
-      updateBeat(localIdx, pos.beatIdx, value);
+      const localIdx = pos.measureIdx - itemOffset;
+      if (localIdx < 0 || localIdx >= itemsRef.current.length) return;
+      if (!isMeasure(itemsRef.current[localIdx])) return;
+      updateBeat(pos.measureIdx, pos.beatIdx, value);
     };
     return keypad.registerWriteHandler(writer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [measureOffset, keypad]);
+  }, [itemOffset, keypad]);
 
   useEffect(() => {
     const getter = (pos: { measureIdx: number; beatIdx: number }) => {
-      const localIdx = pos.measureIdx - measureOffset;
-      if (localIdx < 0 || localIdx >= measuresRef.current.length) return undefined;
-      return measuresRef.current[localIdx]?.beats[pos.beatIdx] || '';
+      const localIdx = pos.measureIdx - itemOffset;
+      if (localIdx < 0 || localIdx >= itemsRef.current.length) return undefined;
+      const item = itemsRef.current[localIdx];
+      if (!isMeasure(item)) return undefined;
+      return item.beats[pos.beatIdx] || '';
     };
     return keypad.registerValueGetter(getter);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [measureOffset, keypad]);
+  }, [itemOffset, keypad]);
 
-  // Register insert handler — keypad's "Add Measure" key calls this
+  // Insert a new measure after the focused one
   useEffect(() => {
-    const inserter = (afterMeasureIdx: number) => {
-      const localIdx = afterMeasureIdx - measureOffset;
-      if (localIdx < 0 || localIdx >= measuresRef.current.length) return;
-      const next = [...measuresRef.current];
-      next.splice(localIdx + 1, 0, { beats: Array(beatsPerMeasure).fill('') });
+    const inserter = (afterItemIdx: number) => {
+      const localIdx = afterItemIdx - itemOffset;
+      if (localIdx < 0 || localIdx >= itemsRef.current.length) return;
+      const next = [...itemsRef.current];
+      next.splice(localIdx + 1, 0, { type: 'measure', beats: Array(beatsPerMeasure).fill('') });
       onChange(next);
     };
     return keypad.registerInsertHandler(inserter);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [measureOffset, keypad, beatsPerMeasure]);
+  }, [itemOffset, keypad, beatsPerMeasure]);
 
-  // Register out toggle handler — keypad's OUT key calls this
+  // Toggle out
   useEffect(() => {
-    const outToggler = (measureIdx: number) => {
-      const localIdx = measureIdx - measureOffset;
-      if (localIdx < 0 || localIdx >= measuresRef.current.length) return;
-      const next = [...measuresRef.current];
-      next[localIdx] = { ...next[localIdx], out: !next[localIdx].out };
+    const outToggler = (itemIdx: number) => {
+      const localIdx = itemIdx - itemOffset;
+      if (localIdx < 0 || localIdx >= itemsRef.current.length) return;
+      const item = itemsRef.current[localIdx];
+      if (!isMeasure(item)) return;
+      const next = [...itemsRef.current];
+      next[localIdx] = { ...item, out: !item.out };
       onChange(next);
     };
     return keypad.registerOutHandler(outToggler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [measureOffset, keypad]);
+  }, [itemOffset, keypad]);
 
-  const handleCellTap = (e: React.MouseEvent<HTMLButtonElement>, mIdx: number, bIdx: number) => {
+  const handleCellTap = (e: React.MouseEvent<HTMLButtonElement>, itemIdx: number, bIdx: number) => {
     e.stopPropagation();
-    keypad.focusCell({ measureIdx: mIdx + measureOffset, beatIdx: bIdx }, e.currentTarget);
+    keypad.focusCell({ measureIdx: itemIdx + itemOffset, beatIdx: bIdx }, e.currentTarget);
   };
 
-  const isFocused = (mIdx: number, bIdx: number) =>
-    keypad.focusedCell?.measureIdx === mIdx + measureOffset &&
+  const isFocused = (itemIdx: number, bIdx: number) =>
+    keypad.focusedCell?.measureIdx === itemIdx + itemOffset &&
     keypad.focusedCell?.beatIdx === bIdx;
 
-  const updateSection = (mIdx: number, section: string) => {
-    const next = [...measures];
-    next[mIdx] = { ...next[mIdx], section };
+  const updateSection = (itemIdx: number, section: string) => {
+    const next = [...items];
+    const item = next[itemIdx];
+    if (!isMeasure(item)) return;
+    next[itemIdx] = { ...item, section };
     onChange(next);
   };
 
   const addMeasureBelow = (afterIdx: number) => {
-    const next = [...measures];
-    next.splice(afterIdx + 1, 0, { beats: Array(beatsPerMeasure).fill('') });
+    const next = [...items];
+    next.splice(afterIdx + 1, 0, { type: 'measure', beats: Array(beatsPerMeasure).fill('') });
     onChange(next);
   };
 
-  const removeMeasure = (idx: number) => {
-    if (measures.length <= 1) return;
-    onChange(measures.filter((_, i) => i !== idx));
+  const addNoteBelow = (afterIdx: number) => {
+    const next = [...items];
+    const newNote: ChartNote = { type: 'note', text: 'Note', color: 'violet' };
+    next.splice(afterIdx + 1, 0, newNote);
+    onChange(next);
+    setEditingItem(afterIdx + 1);
   };
+
+  const addLyricBelow = (afterIdx: number) => {
+    const next = [...items];
+    const newLyric: ChartLyric = { type: 'lyric', text: 'lyric...' };
+    next.splice(afterIdx + 1, 0, newLyric);
+    onChange(next);
+    setEditingItem(afterIdx + 1);
+  };
+
+  const removeItem = (idx: number) => {
+    if (items.length <= 1) return;
+    onChange(items.filter((_, i) => i !== idx));
+  };
+
+  const updateNote = (idx: number, partial: Partial<ChartNote>) => {
+    const next = [...items];
+    const item = next[idx];
+    if (item.type !== 'note') return;
+    next[idx] = { ...item, ...partial };
+    onChange(next);
+  };
+
+  const updateLyric = (idx: number, text: string) => {
+    const next = [...items];
+    const item = next[idx];
+    if (item.type !== 'lyric') return;
+    next[idx] = { ...item, text };
+    onChange(next);
+  };
+
+  // Compute global measure number for display (skip notes/lyrics)
+  const measureNumbers: number[] = [];
+  let mNum = itemOffset === 0 ? 0 : (() => {
+    // Count measures in the parent's prior items if we had access; for now assume offset is global item idx
+    return itemOffset;
+  })();
+  items.forEach((item) => {
+    if (isMeasure(item)) {
+      mNum++;
+      measureNumbers.push(mNum);
+    } else {
+      measureNumbers.push(0);
+    }
+  });
 
   return (
     <div className="space-y-1">
-      {measures.map((measure, mIdx) => (
-        <div key={mIdx}>
-          {showSectionHeaders && measure.section !== undefined && (
-            <div className="flex items-center gap-2 mt-3 mb-1">
-              <select
-                value={measure.section}
-                onChange={(e) => updateSection(mIdx, e.target.value)}
-                className="bg-zinc-800 text-xs font-bold rounded px-2 py-1 text-indigo-400 border border-zinc-700 uppercase tracking-wide"
-              >
-                {SECTIONS.map(s => (
-                  <option key={s} value={s}>{s}</option>
-                ))}
-              </select>
-              {onDuplicateSection && (
-                <button
-                  onClick={() => onDuplicateSection(mIdx)}
-                  className="p-1 rounded text-xs text-zinc-500 hover:text-violet-400 hover:bg-white/5 inline-flex items-center gap-1"
-                  title="Duplicate this section"
-                >
-                  <Copy size={11} /> Duplicate
-                </button>
-              )}
-            </div>
-          )}
-          <div className="flex items-center gap-1 group">
-            <div className="text-xs text-zinc-600 w-6 text-right shrink-0 font-mono">
-              {mIdx + measureOffset + 1}
-            </div>
-            <div className="flex gap-1 flex-1">
-              {measure.out ? (
-                // Whole measure is OUT — render single greyed badge spanning the row
-                <button
-                  type="button"
-                  data-cell={`${mIdx + measureOffset}-0`}
-                  onClick={(e) => handleCellTap(e, mIdx, 0)}
-                  className="flex-1 h-12 rounded-md border border-zinc-800 bg-zinc-900/30 text-zinc-600 font-mono text-xs uppercase tracking-widest hover:border-zinc-600"
-                  title="OUT — band rests this measure. Tap OUT key on keypad to toggle back."
-                >
-                  ◎ OUT
-                </button>
+      {items.map((item, iIdx) => {
+        // ===== NOTE =====
+        if (item.type === 'note') {
+          const c = NOTE_COLOR_CLASSES[item.color || 'violet'];
+          return (
+            <div key={iIdx} className={`my-2 rounded-lg ${c.bg} border-l-4 ${c.border} px-3 py-2 group flex items-start gap-2`}>
+              <MessageSquare size={14} className={`${c.text} mt-0.5 shrink-0`} />
+              {editingItem === iIdx ? (
+                <input
+                  autoFocus
+                  value={item.text}
+                  onChange={(e) => updateNote(iIdx, { text: e.target.value })}
+                  onBlur={() => setEditingItem(null)}
+                  onKeyDown={(e) => e.key === 'Enter' && setEditingItem(null)}
+                  className={`flex-1 bg-transparent border-0 outline-none font-mono text-sm ${c.text}`}
+                />
               ) : (
-                measure.beats.map((beat, bIdx) => (
-                  <button
-                    key={bIdx}
-                    type="button"
-                    data-cell={`${mIdx + measureOffset}-${bIdx}`}
-                    onClick={(e) => handleCellTap(e, mIdx, bIdx)}
-                    className={`flex-1 min-w-0 h-12 px-1 text-center font-mono rounded-md border transition-all ${
-                      beat && beat.length >= 4 ? 'text-xs' : beat && beat.length >= 3 ? 'text-sm' : 'text-base'
-                    } ${
-                      isFocused(mIdx, bIdx)
-                        ? 'bg-violet-600/30 border-violet-400 ring-2 ring-violet-400/50 text-white'
-                        : beat
-                          ? 'bg-zinc-900 border-zinc-700 text-white hover:border-zinc-500'
-                          : 'bg-zinc-900/50 border-zinc-800 text-zinc-600 hover:border-zinc-600'
-                    }`}
-                    title={beat || ''}
-                  >
-                    <span className="truncate block">{beat || '·'}</span>
-                  </button>
-                ))
-              )}
-            </div>
-            {showAddRemove && (
-              <div className="flex gap-0.5 shrink-0">
-                <button
-                  onClick={() => addMeasureBelow(mIdx)}
-                  className="p-1.5 rounded text-zinc-500 hover:text-emerald-400 hover:bg-white/5"
-                  title="Add measure below"
-                >
-                  <Plus size={14} />
+                <button onClick={() => setEditingItem(iIdx)} className={`flex-1 text-left font-mono text-sm ${c.text} truncate`}>
+                  {item.text || 'Note'}
                 </button>
-                <button
-                  onClick={() => removeMeasure(mIdx)}
-                  className="p-1.5 rounded text-zinc-500 hover:text-red-400 hover:bg-white/5"
-                  title="Remove measure"
-                >
-                  <Trash2 size={14} />
+              )}
+              <div className="flex gap-0.5 shrink-0">
+                {NOTE_COLORS.map(col => (
+                  <button
+                    key={col}
+                    onClick={() => updateNote(iIdx, { color: col })}
+                    className={`w-3 h-3 rounded-full ${NOTE_COLOR_CLASSES[col].bg} ${NOTE_COLOR_CLASSES[col].border} border ${item.color === col ? 'ring-1 ring-white' : ''}`}
+                    title={col}
+                  />
+                ))}
+                <button onClick={() => removeItem(iIdx)} className="p-0.5 text-zinc-500 hover:text-red-400">
+                  <X size={12} />
                 </button>
               </div>
+            </div>
+          );
+        }
+        // ===== LYRIC =====
+        if (item.type === 'lyric') {
+          return (
+            <div key={iIdx} className="my-1 px-3 group flex items-start gap-2">
+              <Mic size={12} className="text-zinc-600 mt-1 shrink-0" />
+              {editingItem === iIdx ? (
+                <input
+                  autoFocus
+                  value={item.text}
+                  onChange={(e) => updateLyric(iIdx, e.target.value)}
+                  onBlur={() => setEditingItem(null)}
+                  onKeyDown={(e) => e.key === 'Enter' && setEditingItem(null)}
+                  className="flex-1 bg-zinc-900/50 border border-zinc-700 rounded px-2 text-sm italic text-zinc-300"
+                />
+              ) : (
+                <button onClick={() => setEditingItem(iIdx)} className="flex-1 text-left text-sm italic text-zinc-400 truncate">
+                  {item.text || 'lyric...'}
+                </button>
+              )}
+              <button onClick={() => removeItem(iIdx)} className="p-0.5 text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100">
+                <X size={12} />
+              </button>
+            </div>
+          );
+        }
+        // ===== MEASURE =====
+        const measure = item as ChartMeasure;
+        return (
+          <div key={iIdx}>
+            {showSectionHeaders && measure.section !== undefined && (
+              <div className="flex items-center gap-2 mt-3 mb-1">
+                <select
+                  value={measure.section}
+                  onChange={(e) => updateSection(iIdx, e.target.value)}
+                  className="bg-zinc-800 text-xs font-bold rounded px-2 py-1 text-indigo-400 border border-zinc-700 uppercase tracking-wide"
+                >
+                  {SECTIONS.map(s => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+                {onDuplicateSection && (
+                  <button
+                    onClick={() => onDuplicateSection(iIdx)}
+                    className="p-1 rounded text-xs text-zinc-500 hover:text-violet-400 hover:bg-white/5 inline-flex items-center gap-1"
+                    title="Duplicate this section"
+                  >
+                    <Copy size={11} /> Duplicate
+                  </button>
+                )}
+              </div>
             )}
+            <div className="flex items-center gap-1 group">
+              <div className="text-xs text-zinc-600 w-6 text-right shrink-0 font-mono">
+                {measureNumbers[iIdx]}
+              </div>
+              <div className="flex gap-1 flex-1">
+                {measure.out ? (
+                  <button
+                    type="button"
+                    data-cell={`${iIdx + itemOffset}-0`}
+                    onClick={(e) => handleCellTap(e, iIdx, 0)}
+                    className="flex-1 h-12 rounded-md border border-zinc-800 bg-zinc-900/30 text-zinc-600 font-mono text-xs uppercase tracking-widest hover:border-zinc-600"
+                    title="OUT — band rests this measure. Tap OUT key on keypad to toggle back."
+                  >
+                    ◎ OUT
+                  </button>
+                ) : (
+                  measure.beats.map((beat, bIdx) => (
+                    <button
+                      key={bIdx}
+                      type="button"
+                      data-cell={`${iIdx + itemOffset}-${bIdx}`}
+                      onClick={(e) => handleCellTap(e, iIdx, bIdx)}
+                      className={`flex-1 min-w-0 h-12 px-1 text-center font-mono rounded-md border transition-all ${
+                        beat && beat.length >= 4 ? 'text-xs' : beat && beat.length >= 3 ? 'text-sm' : 'text-base'
+                      } ${
+                        isFocused(iIdx, bIdx)
+                          ? 'bg-violet-600/30 border-violet-400 ring-2 ring-violet-400/50 text-white'
+                          : beat
+                            ? 'bg-zinc-900 border-zinc-700 text-white hover:border-zinc-500'
+                            : 'bg-zinc-900/50 border-zinc-800 text-zinc-600 hover:border-zinc-600'
+                      }`}
+                      title={beat || ''}
+                    >
+                      <span className="truncate block">{beat || '·'}</span>
+                    </button>
+                  ))
+                )}
+              </div>
+              {showAddRemove && (
+                <div className="flex gap-0.5 shrink-0">
+                  <button
+                    onClick={() => addMeasureBelow(iIdx)}
+                    className="p-1.5 rounded text-zinc-500 hover:text-emerald-400 hover:bg-white/5"
+                    title="Add measure below"
+                  >
+                    <Plus size={14} />
+                  </button>
+                  <button
+                    onClick={() => addNoteBelow(iIdx)}
+                    className="p-1.5 rounded text-zinc-500 hover:text-violet-400 hover:bg-white/5"
+                    title="Add note below"
+                  >
+                    <MessageSquare size={14} />
+                  </button>
+                  <button
+                    onClick={() => addLyricBelow(iIdx)}
+                    className="p-1.5 rounded text-zinc-500 hover:text-blue-400 hover:bg-white/5"
+                    title="Add lyric below"
+                  >
+                    <Mic size={14} />
+                  </button>
+                  <button
+                    onClick={() => removeItem(iIdx)}
+                    className="p-1.5 rounded text-zinc-500 hover:text-red-400 hover:bg-white/5"
+                    title="Remove measure"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
