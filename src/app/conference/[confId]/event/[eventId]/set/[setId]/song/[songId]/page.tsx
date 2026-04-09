@@ -69,7 +69,7 @@ export default function SongPage() {
                 });
                 loadSong();
               }}
-              className="px-3 py-1 rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white text-xs font-bold tracking-wider border-0 cursor-pointer appearance-none text-center"
+              className="px-3 py-1.5 rounded-full bg-violet-600 text-white text-xs font-bold tracking-wider border border-violet-500 cursor-pointer"
               title="Tap to change key"
             >
               <option value="">KEY</option>
