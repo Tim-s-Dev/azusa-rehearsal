@@ -123,9 +123,21 @@
   }
   body {
     @apply bg-background text-foreground;
+    /* App-like behavior: no horizontal scroll, no rubber-band, no pinch-zoom */
+    overflow-x: hidden;
+    overscroll-behavior: none;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    touch-action: pan-y;
   }
   html {
     @apply font-sans;
+    overflow-x: hidden;
+    overscroll-behavior: none;
+  }
+  /* Prevent images / canvases from forcing horizontal scroll */
+  img, video, canvas, svg {
+    max-width: 100%;
   }
 }
 

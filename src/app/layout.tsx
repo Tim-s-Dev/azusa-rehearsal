@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import ThemeToggle from "@/components/ThemeToggle";
@@ -23,6 +23,17 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Rehearsal Studio",
   description: "Modern music rehearsal app",
+};
+
+// Lock the viewport: no pinch-zoom, no horizontal scroll, app-like feel
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  minimumScale: 1,
+  userScalable: false,
+  viewportFit: 'cover',
+  themeColor: '#09090b',
 };
 
 export default function RootLayout({

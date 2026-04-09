@@ -31,8 +31,16 @@ const KEYS: { label: string; value: string; type: KeyType; className?: string }[
 export default function ChartKeypad() {
   const k = useKeypad();
   const ref = useRef<HTMLDivElement>(null);
-  const [drag, setDrag] = useState<{ offsetX: number; offsetY: number } | null>(null);
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  // Drag state in a ref so we never re-render mid-drag
+  const dragRef = useRef<{
+    pointerId: number;
+    startPointerX: number;
+    startPointerY: number;
+    startElX: number;
+    startElY: number;
+    moved: boolean;
+  } | null>(null);
 
   // Restore persisted position per mode
   useEffect(() => {
@@ -61,28 +69,6 @@ export default function ChartKeypad() {
     return () => document.removeEventListener('mousedown', handler);
   }, [k.mode, k.focusedCell, k]);
 
-  // Drag move/end listeners
-  useEffect(() => {
-    if (!drag) return;
-    const handleMove = (e: PointerEvent) => {
-      const w = ref.current?.offsetWidth || 280;
-      const h = ref.current?.offsetHeight || 240;
-      const newX = Math.max(8, Math.min(window.innerWidth - w - 8, e.clientX - drag.offsetX));
-      const newY = Math.max(8, Math.min(window.innerHeight - h - 8, e.clientY - drag.offsetY));
-      setPos({ x: newX, y: newY });
-    };
-    const handleUp = () => {
-      setDrag(null);
-      if (pos) localStorage.setItem(`keypad_pos_${k.mode}`, JSON.stringify(pos));
-    };
-    window.addEventListener('pointermove', handleMove);
-    window.addEventListener('pointerup', handleUp);
-    return () => {
-      window.removeEventListener('pointermove', handleMove);
-      window.removeEventListener('pointerup', handleUp);
-    };
-  }, [drag, pos, k.mode]);
-
   if (!k.focusedCell) return null;
 
   const handleKey = (key: typeof KEYS[number]) => {
@@ -94,18 +80,75 @@ export default function ChartKeypad() {
     }
   };
 
-  const startDrag = (e: React.PointerEvent) => {
-    if (!ref.current) return;
-    const rect = ref.current.getBoundingClientRect();
-    setDrag({ offsetX: e.clientX - rect.left, offsetY: e.clientY - rect.top });
-    if (!pos) setPos({ x: rect.left, y: rect.top });
+  // ── Drag handlers ────────────────────────────────────────────────
+  // Pattern: capture pointer on the handle, move element via direct DOM
+  // style writes (no React state). Commit to React state only on release.
+  const onHandlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    const el = ref.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    dragRef.current = {
+      pointerId: e.pointerId,
+      startPointerX: e.clientX,
+      startPointerY: e.clientY,
+      startElX: rect.left,
+      startElY: rect.top,
+      moved: false,
+    };
+    // Use the handle as the capture target so we get move/up even if pointer leaves
+    try { (e.currentTarget as Element).setPointerCapture(e.pointerId); } catch {}
+    // Pin element to absolute coordinates so we can move freely
+    el.style.left = `${rect.left}px`;
+    el.style.top = `${rect.top}px`;
+    el.style.right = 'auto';
+    el.style.bottom = 'auto';
+    el.style.transform = 'none';
+    el.style.transition = 'none';
+    e.preventDefault();
+  };
+
+  const onHandlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    const el = ref.current;
+    if (!drag || !el) return;
+    if (drag.pointerId !== e.pointerId) return;
+
+    const dx = e.clientX - drag.startPointerX;
+    const dy = e.clientY - drag.startPointerY;
+    if (!drag.moved && Math.hypot(dx, dy) < 3) return; // ignore micro-movements
+    drag.moved = true;
+
+    const w = el.offsetWidth;
+    const h = el.offsetHeight;
+    const newX = Math.max(8, Math.min(window.innerWidth - w - 8, drag.startElX + dx));
+    const newY = Math.max(8, Math.min(window.innerHeight - h - 8, drag.startElY + dy));
+    el.style.left = `${newX}px`;
+    el.style.top = `${newY}px`;
+  };
+
+  const onHandlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    const el = ref.current;
+    if (!drag || !el) return;
+    if (drag.pointerId !== e.pointerId) return;
+    try { (e.currentTarget as Element).releasePointerCapture(e.pointerId); } catch {}
+    if (drag.moved) {
+      const rect = el.getBoundingClientRect();
+      const next = { x: rect.left, y: rect.top };
+      setPos(next);
+      try { localStorage.setItem(`keypad_pos_${k.mode}`, JSON.stringify(next)); } catch {}
+    }
+    dragRef.current = null;
   };
 
   const keypadInner = (
     <div className="space-y-2">
       <div
-        className="flex items-center justify-between text-xs text-zinc-500 cursor-grab active:cursor-grabbing select-none -m-3 -mb-1 p-3 pb-1"
-        onPointerDown={startDrag}
+        className="flex items-center justify-between text-xs text-zinc-500 cursor-grab active:cursor-grabbing select-none -m-3 -mb-1 p-3 pb-1 touch-none"
+        onPointerDown={onHandlePointerDown}
+        onPointerMove={onHandlePointerMove}
+        onPointerUp={onHandlePointerUp}
+        onPointerCancel={onHandlePointerUp}
       >
         <div className="flex items-center gap-1.5">
           <Move size={11} className="text-zinc-600" />
