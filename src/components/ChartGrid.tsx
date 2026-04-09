@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Plus, Trash2, Copy, MessageSquare, Mic, X } from 'lucide-react';
+import { Plus, Trash2, Copy, MessageSquare, Mic, X, GripVertical } from 'lucide-react';
 import type { ChartMeasure, ChartItem, ChartNote, ChartLyric } from '@/lib/types';
 import { isMeasure } from '@/lib/types';
 import { useKeypad } from './KeypadProvider';
@@ -19,7 +19,67 @@ interface ChartGridProps {
   onDuplicateSection?: (sectionStartIdx: number) => void;
 }
 
-const SECTIONS = ['Intro', 'Verse', 'Pre-Chorus', 'Chorus', 'Bridge', 'Outro', 'Tag', 'Instrumental', 'Vamp'];
+const SECTIONS = ['Intro', 'Verse', 'Pre-Chorus', 'Chorus', 'Bridge', 'Interlude', 'Outro', 'Tag', 'Instrumental', 'Vamp'];
+
+function SectionHeader({ measure, itemIdx, sectionIdx, dragSectionIdx, dragOverSectionIdx, setDragSectionIdx, setDragOverSectionIdx, reorderSection, updateSection, onDuplicateSection }: {
+  measure: ChartMeasure;
+  itemIdx: number;
+  sectionIdx: number;
+  dragSectionIdx: number | null;
+  dragOverSectionIdx: number | null;
+  setDragSectionIdx: (v: number | null) => void;
+  setDragOverSectionIdx: (v: number | null) => void;
+  reorderSection: (from: number, to: number) => void;
+  updateSection: (iIdx: number, section: string) => void;
+  onDuplicateSection?: (iIdx: number) => void;
+}) {
+  const isDragging = dragSectionIdx === sectionIdx;
+  const isDragOver = dragOverSectionIdx === sectionIdx && dragSectionIdx !== sectionIdx;
+  return (
+    <div
+      className={`flex items-center gap-2 mt-3 mb-1 rounded-lg px-1 py-0.5 transition-all ${
+        isDragging ? 'opacity-40' : ''
+      } ${isDragOver ? 'ring-2 ring-violet-400 bg-violet-500/10' : ''}`}
+      draggable
+      onDragStart={(e) => { setDragSectionIdx(sectionIdx); e.dataTransfer.effectAllowed = 'move'; }}
+      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; if (dragOverSectionIdx !== sectionIdx) setDragOverSectionIdx(sectionIdx); }}
+      onDragLeave={() => { if (dragOverSectionIdx === sectionIdx) setDragOverSectionIdx(null); }}
+      onDrop={(e) => { e.preventDefault(); if (dragSectionIdx !== null && dragSectionIdx !== sectionIdx) reorderSection(dragSectionIdx, sectionIdx); setDragSectionIdx(null); setDragOverSectionIdx(null); }}
+      onDragEnd={() => { setDragSectionIdx(null); setDragOverSectionIdx(null); }}
+    >
+      <div className="cursor-grab active:cursor-grabbing text-zinc-600 hover:text-zinc-300 shrink-0 touch-none" title="Drag to reorder">
+        <GripVertical size={14} />
+      </div>
+      <select
+        value={SECTIONS.includes(measure.section || '') ? measure.section : '__custom__'}
+        onChange={(e) => {
+          if (e.target.value === '__custom__') {
+            const name = window.prompt('Section name:', measure.section || '');
+            if (name) updateSection(itemIdx, name);
+          } else {
+            updateSection(itemIdx, e.target.value);
+          }
+        }}
+        className="bg-zinc-800 text-xs font-bold rounded px-2 py-1 text-indigo-400 border border-zinc-700 uppercase tracking-wide"
+      >
+        {SECTIONS.map(s => (<option key={s} value={s}>{s}</option>))}
+        <option value="__custom__">Custom…</option>
+        {measure.section && !SECTIONS.includes(measure.section) && (
+          <option value={measure.section}>{measure.section}</option>
+        )}
+      </select>
+      {onDuplicateSection && (
+        <button
+          onClick={() => onDuplicateSection(itemIdx)}
+          className="p-1 rounded text-xs text-zinc-500 hover:text-violet-400 hover:bg-white/5 inline-flex items-center gap-1"
+          title="Duplicate this section"
+        >
+          <Copy size={11} /> Dup
+        </button>
+      )}
+    </div>
+  );
+}
 const NOTE_COLORS = ['violet', 'fuchsia', 'blue', 'emerald', 'amber', 'red'] as const;
 const NOTE_COLOR_CLASSES: Record<string, { bg: string; border: string; text: string }> = {
   violet:  { bg: 'bg-violet-500/10',  border: 'border-violet-500/40',  text: 'text-violet-300' },
@@ -111,6 +171,45 @@ export default function ChartGrid({
   }, [itemOffset, keypad]);
 
   const longPressTimers = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  const [dragSectionIdx, setDragSectionIdx] = useState<number | null>(null);
+  const [dragOverSectionIdx, setDragOverSectionIdx] = useState<number | null>(null);
+
+  // Build section index map: for each item, which section (by first-measure index) does it belong to?
+  const sectionStarts: number[] = [];
+  items.forEach((item, i) => {
+    if (isMeasure(item) && item.section !== undefined) sectionStarts.push(i);
+  });
+
+  const getSectionIdx = (itemIdx: number) => {
+    for (let i = sectionStarts.length - 1; i >= 0; i--) {
+      if (itemIdx >= sectionStarts[i]) return i;
+    }
+    return 0;
+  };
+
+  const getSectionRange = (sIdx: number): [number, number] => {
+    const start = sectionStarts[sIdx];
+    const end = sIdx + 1 < sectionStarts.length ? sectionStarts[sIdx + 1] : items.length;
+    return [start, end];
+  };
+
+  const reorderSection = (fromSIdx: number, toSIdx: number) => {
+    if (fromSIdx === toSIdx) return;
+    const [fromStart, fromEnd] = getSectionRange(fromSIdx);
+    const movedItems = items.slice(fromStart, fromEnd);
+    const remaining = [...items.slice(0, fromStart), ...items.slice(fromEnd)];
+    // Recalculate insertion point after removing
+    const newSectionStarts: number[] = [];
+    remaining.forEach((item, i) => {
+      if (isMeasure(item) && item.section !== undefined) newSectionStarts.push(i);
+    });
+    const targetIdx = toSIdx >= newSectionStarts.length
+      ? remaining.length
+      : newSectionStarts[Math.min(toSIdx, newSectionStarts.length - 1)];
+    const result = [...remaining];
+    result.splice(targetIdx, 0, ...movedItems);
+    onChange(result);
+  };
 
   const handleCellPointerDown = (e: React.PointerEvent<HTMLButtonElement>, itemIdx: number, bIdx: number) => {
     e.stopPropagation();
@@ -294,28 +393,18 @@ export default function ChartGrid({
         const measure = item as ChartMeasure;
         return (
           <div key={iIdx}>
-            {showSectionHeaders && measure.section !== undefined && (
-              <div className="flex items-center gap-2 mt-3 mb-1">
-                <select
-                  value={measure.section}
-                  onChange={(e) => updateSection(iIdx, e.target.value)}
-                  className="bg-zinc-800 text-xs font-bold rounded px-2 py-1 text-indigo-400 border border-zinc-700 uppercase tracking-wide"
-                >
-                  {SECTIONS.map(s => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
-                {onDuplicateSection && (
-                  <button
-                    onClick={() => onDuplicateSection(iIdx)}
-                    className="p-1 rounded text-xs text-zinc-500 hover:text-violet-400 hover:bg-white/5 inline-flex items-center gap-1"
-                    title="Duplicate this section"
-                  >
-                    <Copy size={11} /> Duplicate
-                  </button>
-                )}
-              </div>
-            )}
+            {showSectionHeaders && measure.section !== undefined && <SectionHeader
+              measure={measure}
+              itemIdx={iIdx}
+              sectionIdx={getSectionIdx(iIdx)}
+              dragSectionIdx={dragSectionIdx}
+              dragOverSectionIdx={dragOverSectionIdx}
+              setDragSectionIdx={setDragSectionIdx}
+              setDragOverSectionIdx={setDragOverSectionIdx}
+              reorderSection={reorderSection}
+              updateSection={updateSection}
+              onDuplicateSection={onDuplicateSection}
+            />}
             <div className="flex items-center gap-1 group">
               <div className="text-xs text-zinc-600 w-6 text-right shrink-0 font-mono">
                 {measureNumbers[iIdx]}

@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { Plus, Save, Sparkles, Keyboard } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Plus, Save, Sparkles, Keyboard, GripVertical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { ChartItem, ChartMeasure, SongFile } from '@/lib/types';
 import { isMeasure } from '@/lib/types';
@@ -104,8 +104,47 @@ export default function NumberChartEditor({ songId, songKey, audioFiles = [], on
     updateItems([...items, { type: 'measure', beats: Array(beatsPerMeasure).fill('') }]);
   };
 
-  const addSectionAtEnd = () => {
-    updateItems([...items, { type: 'measure', section: 'Verse', beats: Array(beatsPerMeasure).fill('') }]);
+  const [showSectionPicker, setShowSectionPicker] = useState(false);
+  const SECTION_TYPES = ['Intro', 'Verse', 'Pre-Chorus', 'Chorus', 'Bridge', 'Interlude', 'Outro', 'Tag', 'Instrumental', 'Vamp'];
+  const [customSectionName, setCustomSectionName] = useState('');
+
+  /**
+   * Smart add section: finds the last section with the same name in the chart
+   * and clones its measures. If none found, creates a single empty measure.
+   */
+  const addSectionAtEnd = (sectionName: string) => {
+    // Find all items belonging to the last occurrence of this section name
+    let lastSectionStart = -1;
+    for (let i = items.length - 1; i >= 0; i--) {
+      const it = items[i];
+      if (isMeasure(it) && it.section?.toLowerCase() === sectionName.toLowerCase()) {
+        lastSectionStart = i;
+        break;
+      }
+    }
+
+    let newItems: ChartItem[];
+    if (lastSectionStart >= 0) {
+      // Find the end of that section
+      let lastSectionEnd = items.length;
+      for (let i = lastSectionStart + 1; i < items.length; i++) {
+        const it = items[i];
+        if (isMeasure(it) && it.section !== undefined) { lastSectionEnd = i; break; }
+      }
+      // Clone it
+      newItems = items.slice(lastSectionStart, lastSectionEnd).map((item, idx) => {
+        if (isMeasure(item)) {
+          return { ...item, beats: [...item.beats], section: idx === 0 ? sectionName : undefined };
+        }
+        return { ...item };
+      });
+    } else {
+      // No previous section with this name — create one empty measure
+      newItems = [{ type: 'measure' as const, section: sectionName, beats: Array(beatsPerMeasure).fill('') }];
+    }
+
+    updateItems([...items, ...newItems]);
+    setShowSectionPicker(false);
   };
 
   const duplicateSection = (sectionStartIdx: number) => {
@@ -196,13 +235,68 @@ export default function NumberChartEditor({ songId, songKey, audioFiles = [], on
       />
 
       {/* Add buttons */}
-      <div className="flex gap-2">
-        <Button variant="outline" size="sm" onClick={addMeasureAtEnd}>
-          <Plus size={14} className="mr-1" /> Measure
-        </Button>
-        <Button variant="outline" size="sm" onClick={addSectionAtEnd}>
-          <Plus size={14} className="mr-1" /> Section
-        </Button>
+      <div className="space-y-2">
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={addMeasureAtEnd}>
+            <Plus size={14} className="mr-1" /> Measure
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setShowSectionPicker(!showSectionPicker)}>
+            <Plus size={14} className="mr-1" /> Section
+          </Button>
+        </div>
+        {showSectionPicker && (
+          <div className="glass rounded-xl p-3">
+            <div className="text-[10px] uppercase tracking-wider text-zinc-500 mb-2">
+              Pick a section — if you&apos;ve already charted it, the numbers auto-fill
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {SECTION_TYPES.map(s => {
+                const hasExisting = items.some(it => isMeasure(it) && it.section?.toLowerCase() === s.toLowerCase());
+                return (
+                  <button
+                    key={s}
+                    onClick={() => addSectionAtEnd(s)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      hasExisting
+                        ? 'bg-violet-500/20 text-violet-300 border border-violet-500/40 hover:bg-violet-500/30'
+                        : 'bg-white/5 text-zinc-300 border border-white/10 hover:bg-white/10'
+                    }`}
+                  >
+                    {s}
+                    {hasExisting && <span className="ml-1 text-[9px] opacity-60">●</span>}
+                  </button>
+                );
+              })}
+            </div>
+            {/* Custom freetext section name */}
+            <div className="flex gap-1.5 mt-2">
+              <input
+                value={customSectionName}
+                onChange={(e) => setCustomSectionName(e.target.value)}
+                placeholder="Custom name…"
+                className="flex-1 bg-zinc-900/50 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-600"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && customSectionName.trim()) {
+                    addSectionAtEnd(customSectionName.trim());
+                    setCustomSectionName('');
+                  }
+                }}
+              />
+              <button
+                onClick={() => {
+                  if (customSectionName.trim()) {
+                    addSectionAtEnd(customSectionName.trim());
+                    setCustomSectionName('');
+                  }
+                }}
+                disabled={!customSectionName.trim()}
+                className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs font-bold text-zinc-300 disabled:opacity-30"
+              >
+                Add
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="text-xs text-zinc-600 space-y-0.5 border-t border-zinc-800 pt-3 flex items-center justify-between">
