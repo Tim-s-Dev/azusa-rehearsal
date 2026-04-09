@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Plus, Trash2, Copy, MessageSquare, Mic, X, GripVertical } from 'lucide-react';
+import { Plus, Trash2, Copy, X, MessageSquare, Mic } from 'lucide-react';
 import type { ChartMeasure, ChartItem, ChartNote, ChartLyric } from '@/lib/types';
 import { isMeasure } from '@/lib/types';
 import { useKeypad } from './KeypadProvider';
@@ -21,34 +21,35 @@ interface ChartGridProps {
 
 const SECTIONS = ['Intro', 'Verse', 'Pre-Chorus', 'Chorus', 'Bridge', 'Interlude', 'Outro', 'Tag', 'Instrumental', 'Vamp'];
 
-function SectionHeader({ measure, itemIdx, sectionIdx, dragSectionIdx, dragOverSectionIdx, setDragSectionIdx, setDragOverSectionIdx, reorderSection, updateSection, onDuplicateSection }: {
+function SectionHeader({ measure, itemIdx, sectionIdx, totalSections, reorderSection, updateSection, onDuplicateSection }: {
   measure: ChartMeasure;
   itemIdx: number;
   sectionIdx: number;
-  dragSectionIdx: number | null;
-  dragOverSectionIdx: number | null;
-  setDragSectionIdx: (v: number | null) => void;
-  setDragOverSectionIdx: (v: number | null) => void;
+  totalSections: number;
   reorderSection: (from: number, to: number) => void;
   updateSection: (iIdx: number, section: string) => void;
   onDuplicateSection?: (iIdx: number) => void;
 }) {
-  const isDragging = dragSectionIdx === sectionIdx;
-  const isDragOver = dragOverSectionIdx === sectionIdx && dragSectionIdx !== sectionIdx;
   return (
-    <div
-      className={`flex items-center gap-2 mt-3 mb-1 rounded-lg px-1 py-0.5 transition-all ${
-        isDragging ? 'opacity-40' : ''
-      } ${isDragOver ? 'ring-2 ring-violet-400 bg-violet-500/10' : ''}`}
-      draggable
-      onDragStart={(e) => { setDragSectionIdx(sectionIdx); e.dataTransfer.effectAllowed = 'move'; }}
-      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; if (dragOverSectionIdx !== sectionIdx) setDragOverSectionIdx(sectionIdx); }}
-      onDragLeave={() => { if (dragOverSectionIdx === sectionIdx) setDragOverSectionIdx(null); }}
-      onDrop={(e) => { e.preventDefault(); if (dragSectionIdx !== null && dragSectionIdx !== sectionIdx) reorderSection(dragSectionIdx, sectionIdx); setDragSectionIdx(null); setDragOverSectionIdx(null); }}
-      onDragEnd={() => { setDragSectionIdx(null); setDragOverSectionIdx(null); }}
-    >
-      <div className="cursor-grab active:cursor-grabbing text-zinc-600 hover:text-zinc-300 shrink-0 touch-none" title="Drag to reorder">
-        <GripVertical size={14} />
+    <div className="flex items-center gap-1.5 mt-3 mb-1 rounded-lg px-1 py-0.5">
+      {/* Up / Down arrow buttons — reliable on touch */}
+      <div className="flex flex-col shrink-0">
+        <button
+          onClick={() => { if (sectionIdx > 0) reorderSection(sectionIdx, sectionIdx - 1); }}
+          disabled={sectionIdx === 0}
+          className="p-0.5 text-zinc-600 hover:text-zinc-300 disabled:opacity-20"
+          title="Move section up"
+        >
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 2L2 7h8L6 2z" fill="currentColor"/></svg>
+        </button>
+        <button
+          onClick={() => { if (sectionIdx < totalSections - 1) reorderSection(sectionIdx, sectionIdx + 1); }}
+          disabled={sectionIdx >= totalSections - 1}
+          className="p-0.5 text-zinc-600 hover:text-zinc-300 disabled:opacity-20"
+          title="Move section down"
+        >
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 10L2 5h8L6 10z" fill="currentColor"/></svg>
+        </button>
       </div>
       <select
         value={SECTIONS.includes(measure.section || '') ? measure.section : '__custom__'}
@@ -171,8 +172,6 @@ export default function ChartGrid({
   }, [itemOffset, keypad]);
 
   const longPressTimers = useRef<Map<string, NodeJS.Timeout>>(new Map());
-  const [dragSectionIdx, setDragSectionIdx] = useState<number | null>(null);
-  const [dragOverSectionIdx, setDragOverSectionIdx] = useState<number | null>(null);
 
   // Build section index map: for each item, which section (by first-measure index) does it belong to?
   const sectionStarts: number[] = [];
@@ -397,10 +396,7 @@ export default function ChartGrid({
               measure={measure}
               itemIdx={iIdx}
               sectionIdx={getSectionIdx(iIdx)}
-              dragSectionIdx={dragSectionIdx}
-              dragOverSectionIdx={dragOverSectionIdx}
-              setDragSectionIdx={setDragSectionIdx}
-              setDragOverSectionIdx={setDragOverSectionIdx}
+              totalSections={sectionStarts.length}
               reorderSection={reorderSection}
               updateSection={updateSection}
               onDuplicateSection={onDuplicateSection}
