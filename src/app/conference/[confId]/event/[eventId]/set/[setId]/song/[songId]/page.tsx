@@ -58,11 +58,26 @@ export default function SongPage() {
         <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-violet-600/20 to-fuchsia-600/20 blur-3xl -translate-y-1/2 translate-x-1/2" />
         <div className="relative">
           <div className="flex items-center gap-3 mb-2">
-            {song?.key && (
-              <div className="px-3 py-1 rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white text-xs font-bold tracking-wider">
-                KEY · {song.key}
-              </div>
-            )}
+            <select
+              value={song?.key || ''}
+              onChange={async (e) => {
+                const newKey = e.target.value;
+                await fetch('/api/songs', {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ id: songId, key: newKey }),
+                });
+                loadSong();
+              }}
+              className="px-3 py-1 rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white text-xs font-bold tracking-wider border-0 cursor-pointer appearance-none text-center"
+              title="Tap to change key"
+            >
+              <option value="">KEY</option>
+              {['C','C#','Db','D','D#','Eb','E','F','F#','Gb','G','G#','Ab','A','A#','Bb','B',
+                'Cm','C#m','Dm','D#m','Ebm','Em','Fm','F#m','Gm','G#m','Am','A#m','Bbm','Bm'].map(k => (
+                <option key={k} value={k}>{k}</option>
+              ))}
+            </select>
             {song?.bpm && (
               <div className="px-3 py-1 rounded-full glass text-xs font-mono">
                 {song.bpm} BPM

@@ -86,6 +86,12 @@ export default function RootLayout({
                     >
                       Songs
                     </Link>
+                    <Link
+                      href="/setlists"
+                      className="px-3 py-1.5 rounded-full text-xs font-semibold bg-white/5 hover:bg-white/10 text-zinc-300 transition-colors"
+                    >
+                      Setlists
+                    </Link>
                     <ThemeToggle />
                   </div>
                 </nav>
