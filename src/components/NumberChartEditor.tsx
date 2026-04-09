@@ -105,46 +105,70 @@ export default function NumberChartEditor({ songId, songKey, audioFiles = [], on
   };
 
   const [showSectionPicker, setShowSectionPicker] = useState(false);
+  const [versionPicker, setVersionPicker] = useState<{ name: string; versions: { start: number; end: number; preview: string }[] } | null>(null);
   const SECTION_TYPES = ['Intro', 'Verse', 'Pre-Chorus', 'Chorus', 'Bridge', 'Interlude', 'Outro', 'Tag', 'Instrumental', 'Vamp'];
   const [customSectionName, setCustomSectionName] = useState('');
 
+  /** Find ALL occurrences of a section by name, with a preview of their beats */
+  const findSectionVersions = (sectionName: string) => {
+    const versions: { start: number; end: number; preview: string }[] = [];
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      if (!isMeasure(it) || it.section?.toLowerCase() !== sectionName.toLowerCase()) continue;
+      let end = items.length;
+      for (let j = i + 1; j < items.length; j++) {
+        const jt = items[j]; if (isMeasure(jt) && jt.section !== undefined) { end = j; break; }
+      }
+      // Build a preview string: first 4 measures' beats
+      const measureItems = items.slice(i, end).filter(isMeasure);
+      const preview = measureItems.slice(0, 4).map(m => m.beats.filter(b => b).join(' ')).filter(Boolean).join(' | ') || '(empty)';
+      // Also show which occurrence (Chorus 1, Chorus 2, etc.)
+      versions.push({ start: i, end, preview });
+    }
+    return versions;
+  };
+
   /**
-   * Smart add section: finds the last section with the same name in the chart
-   * and clones its measures. If none found, creates a single empty measure.
+   * Smart add section: if multiple versions exist, show a picker.
+   * If one version, clone it. If none, start blank.
    */
   const addSectionAtEnd = (sectionName: string) => {
-    // Find all items belonging to the last occurrence of this section name
-    let lastSectionStart = -1;
-    for (let i = items.length - 1; i >= 0; i--) {
-      const it = items[i];
-      if (isMeasure(it) && it.section?.toLowerCase() === sectionName.toLowerCase()) {
-        lastSectionStart = i;
-        break;
-      }
+    const versions = findSectionVersions(sectionName);
+
+    if (versions.length === 0) {
+      // No existing — blank
+      updateItems([...items, { type: 'measure' as const, section: sectionName, beats: Array(beatsPerMeasure).fill('') }]);
+      setShowSectionPicker(false);
+      setVersionPicker(null);
+      return;
     }
 
-    let newItems: ChartItem[];
-    if (lastSectionStart >= 0) {
-      // Find the end of that section
-      let lastSectionEnd = items.length;
-      for (let i = lastSectionStart + 1; i < items.length; i++) {
-        const it = items[i];
-        if (isMeasure(it) && it.section !== undefined) { lastSectionEnd = i; break; }
-      }
-      // Clone it
-      newItems = items.slice(lastSectionStart, lastSectionEnd).map((item, idx) => {
-        if (isMeasure(item)) {
-          return { ...item, beats: [...item.beats], section: idx === 0 ? sectionName : undefined };
-        }
-        return { ...item };
-      });
-    } else {
-      // No previous section with this name — create one empty measure
-      newItems = [{ type: 'measure' as const, section: sectionName, beats: Array(beatsPerMeasure).fill('') }];
+    if (versions.length === 1) {
+      // Only one version — clone it directly
+      cloneVersion(sectionName, versions[0]);
+      return;
     }
 
+    // Multiple versions — show picker
+    setVersionPicker({ name: sectionName, versions });
+  };
+
+  const cloneVersion = (sectionName: string, version: { start: number; end: number }) => {
+    const newItems = items.slice(version.start, version.end).map((item, idx) => {
+      if (isMeasure(item)) {
+        return { ...item, beats: [...item.beats], section: idx === 0 ? sectionName : undefined };
+      }
+      return { ...item };
+    });
     updateItems([...items, ...newItems]);
     setShowSectionPicker(false);
+    setVersionPicker(null);
+  };
+
+  const addBlankSection = (sectionName: string) => {
+    updateItems([...items, { type: 'measure' as const, section: sectionName, beats: Array(beatsPerMeasure).fill('') }]);
+    setShowSectionPicker(false);
+    setVersionPicker(null);
   };
 
   const duplicateSection = (sectionStartIdx: number) => {
@@ -295,6 +319,33 @@ export default function NumberChartEditor({ songId, songKey, audioFiles = [], on
                 Add
               </button>
             </div>
+
+            {/* Version picker — shows when a section has multiple existing versions */}
+            {versionPicker && (
+              <div className="mt-3 border-t border-white/10 pt-3">
+                <div className="text-[10px] uppercase tracking-wider text-amber-400 mb-2">
+                  Multiple &quot;{versionPicker.name}&quot; sections found — pick one to clone:
+                </div>
+                <div className="space-y-1.5">
+                  {versionPicker.versions.map((v, i) => (
+                    <button
+                      key={i}
+                      onClick={() => cloneVersion(versionPicker.name, v)}
+                      className="w-full text-left px-3 py-2 rounded-lg bg-white/5 hover:bg-violet-500/10 border border-white/10 hover:border-violet-500/40 transition-all"
+                    >
+                      <div className="text-xs font-bold text-zinc-200">{versionPicker.name} #{i + 1}</div>
+                      <div className="text-[10px] text-zinc-500 font-mono truncate">{v.preview}</div>
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => addBlankSection(versionPicker.name)}
+                    className="w-full text-left px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-dashed border-white/10 text-xs text-zinc-400"
+                  >
+                    + Start blank (no clone)
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
