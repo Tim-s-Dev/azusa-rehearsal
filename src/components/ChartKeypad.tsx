@@ -72,9 +72,16 @@ export default function ChartKeypad() {
   if (!k.focusedCell) return null;
 
   const handleKey = (key: typeof KEYS[number]) => {
-    if (key.type === 'num' || key.type === 'mod') {
+    if (key.type === 'num') {
+      // Number keys: write value and auto-advance to next cell
+      k.appendChar(key.value);
+      // Small delay so the write completes before advancing
+      setTimeout(() => k.advance(), 30);
+    } else if (key.type === 'mod') {
+      // Modifiers append without advancing (m, /, 7th, sus, dim, #, b)
       k.appendChar(key.value);
     } else if (key.type === 'replace') {
+      // Hold (-) and whole-note (◇) replace + advance
       k.setBeatValue(key.value);
       k.advance();
     }

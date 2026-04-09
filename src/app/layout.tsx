@@ -48,6 +48,10 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <head>
+        <link rel="manifest" href="/manifest.json" />
+        <link rel="apple-touch-icon" href="/icon-192.png" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <script
           dangerouslySetInnerHTML={{
             __html: `
@@ -56,6 +60,9 @@ export default function RootLayout({
                 document.documentElement.classList.toggle('dark', t === 'dark');
                 document.documentElement.classList.toggle('light', t === 'light');
               } catch(e) {}
+              if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('/sw.js').catch(function(){});
+              }
             `,
           }}
         />

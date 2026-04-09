@@ -133,6 +133,15 @@ export default function ChartGrid({
     onChange(next);
   };
 
+  const duplicateMeasure = (idx: number) => {
+    const item = items[idx];
+    if (!isMeasure(item)) return;
+    const clone: ChartMeasure = { ...item, beats: [...item.beats], section: undefined };
+    const next = [...items];
+    next.splice(idx + 1, 0, clone);
+    onChange(next);
+  };
+
   const addNoteBelow = (afterIdx: number) => {
     const next = [...items];
     const newNote: ChartNote = { type: 'note', text: 'Note', color: 'violet' };
@@ -316,25 +325,18 @@ export default function ChartGrid({
               {showAddRemove && (
                 <div className="flex gap-0.5 shrink-0">
                   <button
+                    onClick={() => duplicateMeasure(iIdx)}
+                    className="p-1.5 rounded text-zinc-500 hover:text-cyan-400 hover:bg-white/5"
+                    title="Duplicate this measure"
+                  >
+                    <Copy size={14} />
+                  </button>
+                  <button
                     onClick={() => addMeasureBelow(iIdx)}
                     className="p-1.5 rounded text-zinc-500 hover:text-emerald-400 hover:bg-white/5"
-                    title="Add measure below"
+                    title="Add empty measure below"
                   >
                     <Plus size={14} />
-                  </button>
-                  <button
-                    onClick={() => addNoteBelow(iIdx)}
-                    className="p-1.5 rounded text-zinc-500 hover:text-violet-400 hover:bg-white/5"
-                    title="Add note below"
-                  >
-                    <MessageSquare size={14} />
-                  </button>
-                  <button
-                    onClick={() => addLyricBelow(iIdx)}
-                    className="p-1.5 rounded text-zinc-500 hover:text-blue-400 hover:bg-white/5"
-                    title="Add lyric below"
-                  >
-                    <Mic size={14} />
                   </button>
                   <button
                     onClick={() => removeItem(iIdx)}
