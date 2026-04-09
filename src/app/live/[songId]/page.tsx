@@ -3,11 +3,12 @@
 import { useEffect, useState, useRef, useMemo, use } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, ChevronRight, Play, Pause, X, Pencil, MessageSquare, Mic } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Play, Pause, X, Pencil, MessageSquare, Mic, Save } from 'lucide-react';
 import type { Song, SongFile, ChartItem, SongStructureSection, ChartMeasure, ChartNote, ChartLyric } from '@/lib/types';
 import { isMeasure, SECTION_COLORS, normalizeSectionType } from '@/lib/types';
 import { groupMeasuresBySection } from '@/lib/structure';
 import { usePlayer } from '@/components/PlayerProvider';
+import { useKeypad } from '@/components/KeypadProvider';
 
 interface LivePageProps {
   params: Promise<{ songId: string }>;
@@ -45,8 +46,14 @@ export default function LivePage({ params }: LivePageProps) {
   const [setSongs, setSetSongs] = useState<Song[]>([]);
   const [confInfo, setConfInfo] = useState<{ confId: string; eventId: string; setId: string } | null>(null);
   const [autoScroll, setAutoScroll] = useState(true);
+  const [editMode, setEditMode] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const keypad = useKeypad();
   const lastManualScrollRef = useRef(0);
   const sectionRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const itemsRef = useRef(items);
+  useEffect(() => { itemsRef.current = items; }, [items]);
 
   // Load song + files + chart
   useEffect(() => {
@@ -117,6 +124,68 @@ export default function LivePage({ params }: LivePageProps) {
     };
   }, []);
 
+  // ── Edit mode helpers ──────────────────────────────────────────
+  const saveChart = async () => {
+    setSaving(true);
+    await fetch('/api/charts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        song_id: songId,
+        key: song?.key,
+        time_signature: '4/4',
+        chart_data: items,
+      }),
+    });
+    setSaving(false);
+    setDirty(false);
+  };
+
+  // Auto-save when dirty
+  useEffect(() => {
+    if (!dirty) return;
+    const t = setTimeout(saveChart, 5000);
+    return () => clearTimeout(t);
+  }, [dirty, items]);
+
+  const updateBeat = (globalItemIdx: number, beatIdx: number, value: string) => {
+    const next = [...itemsRef.current];
+    const item = next[globalItemIdx];
+    if (!isMeasure(item)) return;
+    next[globalItemIdx] = { ...item, beats: item.beats.map((b, i) => i === beatIdx ? value : b) };
+    setItems(next);
+    setDirty(true);
+  };
+
+  // Register keypad write/value handlers when in edit mode
+  useEffect(() => {
+    if (!editMode) return;
+    const writer = (pos: { measureIdx: number; beatIdx: number }, value: string) => {
+      updateBeat(pos.measureIdx, pos.beatIdx, value);
+    };
+    const unsub1 = keypad.registerWriteHandler(writer);
+    const getter = (pos: { measureIdx: number; beatIdx: number }) => {
+      const item = itemsRef.current[pos.measureIdx];
+      if (!isMeasure(item)) return undefined;
+      return item.beats[pos.beatIdx] || '';
+    };
+    const unsub2 = keypad.registerValueGetter(getter);
+    keypad.registerGrid(items.length, 4);
+    return () => { unsub1(); unsub2(); };
+  }, [editMode, keypad, items.length]);
+
+  const handleCellTap = (e: React.MouseEvent, itemIdx: number, beatIdx: number) => {
+    if (!editMode) return;
+    e.stopPropagation();
+    keypad.focusCell({ measureIdx: itemIdx, beatIdx }, e.currentTarget as HTMLElement);
+  };
+
+  const toggleEditMode = () => {
+    if (editMode && dirty) saveChart();
+    if (editMode) keypad.blur();
+    setEditMode(!editMode);
+  };
+
   // Prev/next song nav (in same set)
   const sortedSetSongs = useMemo(
     () => [...setSongs].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)),
@@ -167,6 +236,13 @@ export default function LivePage({ params }: LivePageProps) {
             <div className="text-[10px] uppercase tracking-widest text-violet-400">LIVE</div>
             <div className="text-sm font-bold truncate">{song.title}</div>
           </div>
+          <button
+            onClick={toggleEditMode}
+            className={`px-2 py-1 rounded text-[10px] font-bold ${editMode ? 'bg-amber-500/30 text-amber-200' : 'bg-white/5 text-zinc-500'}`}
+            title="Toggle edit mode"
+          >
+            {editMode ? (saving ? 'SAVING' : dirty ? 'EDIT ●' : 'EDIT ✓') : 'EDIT'}
+          </button>
           <button
             onClick={() => setAutoScroll(!autoScroll)}
             className={`px-2 py-1 rounded text-[10px] font-bold ${autoScroll ? 'bg-violet-500/30 text-violet-200' : 'bg-white/5 text-zinc-500'}`}
@@ -255,20 +331,34 @@ export default function LivePage({ params }: LivePageProps) {
                           </div>
                         );
                       }
+                      const globalIdx = group.offset + iIdx;
+                      const focused = keypad.focusedCell;
                       return (
                         <div key={iIdx} className="grid grid-cols-4 gap-2">
-                          {measure.beats.map((beat, bIdx) => (
-                            <div
-                              key={bIdx}
-                              className={`h-16 rounded-lg border flex items-center justify-center font-mono font-bold ${
-                                beat
-                                  ? 'bg-zinc-900 border-zinc-700 text-2xl text-white'
-                                  : 'bg-zinc-900/30 border-zinc-800 text-zinc-700'
-                              }`}
-                            >
-                              {beat || '·'}
-                            </div>
-                          ))}
+                          {measure.beats.map((beat, bIdx) => {
+                            const isFocused = editMode && focused?.measureIdx === globalIdx && focused?.beatIdx === bIdx;
+                            return (
+                              <button
+                                key={bIdx}
+                                type="button"
+                                data-cell={`${globalIdx}-${bIdx}`}
+                                onClick={(e) => handleCellTap(e, globalIdx, bIdx)}
+                                className={`h-16 rounded-lg border flex items-center justify-center font-mono font-bold transition-all ${
+                                  isFocused
+                                    ? 'bg-violet-600/40 border-violet-400 ring-2 ring-violet-400/50 text-white text-2xl'
+                                    : editMode
+                                      ? beat
+                                        ? 'bg-zinc-900 border-zinc-600 text-2xl text-white hover:border-violet-500'
+                                        : 'bg-zinc-900/30 border-zinc-700 text-zinc-600 hover:border-violet-500'
+                                      : beat
+                                        ? 'bg-zinc-900 border-zinc-700 text-2xl text-white'
+                                        : 'bg-zinc-900/30 border-zinc-800 text-zinc-700'
+                                }`}
+                              >
+                                {beat || '·'}
+                              </button>
+                            );
+                          })}
                         </div>
                       );
                     })}
