@@ -159,6 +159,7 @@ export default function ChartKeypad() {
           <Move size={11} className="text-zinc-600" />
           <span>
             M{k.focusedCell.measureIdx + 1} · B{k.focusedCell.beatIdx + 1}
+            {k.isLocked && <span className="ml-1 text-amber-400 text-[9px] font-bold">🔒 LOCKED</span>}
           </span>
         </div>
         <div className="flex gap-1">

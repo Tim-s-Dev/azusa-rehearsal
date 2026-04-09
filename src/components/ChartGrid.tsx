@@ -110,14 +110,46 @@ export default function ChartGrid({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [itemOffset, keypad]);
 
-  const handleCellTap = (e: React.MouseEvent<HTMLButtonElement>, itemIdx: number, bIdx: number) => {
+  const longPressTimers = useRef<Map<string, NodeJS.Timeout>>(new Map());
+
+  const handleCellPointerDown = (e: React.PointerEvent<HTMLButtonElement>, itemIdx: number, bIdx: number) => {
     e.stopPropagation();
-    keypad.focusCell({ measureIdx: itemIdx + itemOffset, beatIdx: bIdx }, e.currentTarget);
+    const globalIdx = itemIdx + itemOffset;
+    const key = `${globalIdx}-${bIdx}`;
+    // Start long-press timer (400ms)
+    const timer = setTimeout(() => {
+      longPressTimers.current.delete(key);
+      // Lock the cell
+      keypad.focusCell({ measureIdx: globalIdx, beatIdx: bIdx }, e.currentTarget);
+      keypad.lockCell();
+    }, 400);
+    longPressTimers.current.set(key, timer);
+  };
+
+  const handleCellPointerUp = (e: React.PointerEvent<HTMLButtonElement>, itemIdx: number, bIdx: number) => {
+    const globalIdx = itemIdx + itemOffset;
+    const key = `${globalIdx}-${bIdx}`;
+    const timer = longPressTimers.current.get(key);
+    if (timer) {
+      // Short press — normal focus (not locked)
+      clearTimeout(timer);
+      longPressTimers.current.delete(key);
+      keypad.focusCell({ measureIdx: globalIdx, beatIdx: bIdx }, e.currentTarget);
+    }
+    // If timer already fired (long press), we already locked in pointerDown
+  };
+
+  const handleCellTap = (e: React.MouseEvent<HTMLButtonElement>, itemIdx: number, bIdx: number) => {
+    // No-op — handled by pointer events now
+    e.stopPropagation();
   };
 
   const isFocused = (itemIdx: number, bIdx: number) =>
     keypad.focusedCell?.measureIdx === itemIdx + itemOffset &&
     keypad.focusedCell?.beatIdx === bIdx;
+
+  const isCellLocked = (itemIdx: number, bIdx: number) =>
+    isFocused(itemIdx, bIdx) && keypad.isLocked;
 
   const updateSection = (itemIdx: number, section: string) => {
     const next = [...items];
@@ -305,17 +337,22 @@ export default function ChartGrid({
                       key={bIdx}
                       type="button"
                       data-cell={`${iIdx + itemOffset}-${bIdx}`}
+                      onPointerDown={(e) => handleCellPointerDown(e, iIdx, bIdx)}
+                      onPointerUp={(e) => handleCellPointerUp(e, iIdx, bIdx)}
+                      onPointerCancel={(e) => handleCellPointerUp(e, iIdx, bIdx)}
                       onClick={(e) => handleCellTap(e, iIdx, bIdx)}
                       className={`flex-1 min-w-0 h-12 px-1 text-center font-mono rounded-md border transition-all ${
                         beat && beat.length >= 4 ? 'text-xs' : beat && beat.length >= 3 ? 'text-sm' : 'text-base'
                       } ${
-                        isFocused(iIdx, bIdx)
-                          ? 'bg-violet-600/30 border-violet-400 ring-2 ring-violet-400/50 text-white'
-                          : beat
-                            ? 'bg-zinc-900 border-zinc-700 text-white hover:border-zinc-500'
-                            : 'bg-zinc-900/50 border-zinc-800 text-zinc-600 hover:border-zinc-600'
+                        isCellLocked(iIdx, bIdx)
+                          ? 'bg-amber-600/30 border-amber-400 ring-2 ring-amber-400/60 text-white'
+                          : isFocused(iIdx, bIdx)
+                            ? 'bg-violet-600/30 border-violet-400 ring-2 ring-violet-400/50 text-white'
+                            : beat
+                              ? 'bg-zinc-900 border-zinc-700 text-white hover:border-zinc-500'
+                              : 'bg-zinc-900/50 border-zinc-800 text-zinc-600 hover:border-zinc-600'
                       }`}
-                      title={beat || ''}
+                      title={isCellLocked(iIdx, bIdx) ? 'LOCKED — numbers append here' : beat || ''}
                     >
                       <span className="truncate block">{beat || '·'}</span>
                     </button>

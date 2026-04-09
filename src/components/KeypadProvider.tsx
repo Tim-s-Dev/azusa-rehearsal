@@ -16,8 +16,12 @@ interface KeypadContextValue {
   focusedRect: DOMRect | null;
   totalMeasures: number;
   beatsPerMeasure: number;
-  /** Cell is "fresh" — first input replaces the placeholder/cleared value, then auto-advances. Subsequent input on same cell appends. */
+  /** Cell is "fresh" — first input replaces the placeholder/cleared value, then auto-advances. */
   isFresh: boolean;
+  /** Cell is "locked" — long-press activates, all input appends without advancing. Tap another cell to unlock. */
+  isLocked: boolean;
+  lockCell: () => void;
+  unlockCell: () => void;
   registerGrid: (measures: number, beats: number) => void;
   focusCell: (pos: CellPos, el: HTMLElement | null) => void;
   blur: () => void;
@@ -46,6 +50,7 @@ export function KeypadProvider({ children }: { children: ReactNode }) {
   const [totalMeasures, setTotalMeasures] = useState(1);
   const [beatsPerMeasure, setBeatsPerMeasure] = useState(4);
   const [isFresh, setIsFresh] = useState(true);
+  const [isLocked, setIsLocked] = useState(false);
   const writeHandlers = useRef<((pos: CellPos, value: string) => void)[]>([]);
   const valueGetters = useRef<((pos: CellPos) => string | undefined)[]>([]);
   const insertHandlers = useRef<((afterMeasureIdx: number) => void)[]>([]);
@@ -73,7 +78,17 @@ export function KeypadProvider({ children }: { children: ReactNode }) {
   const focusCell = useCallback((pos: CellPos, el: HTMLElement | null) => {
     setFocusedCell(pos);
     setIsFresh(true);
+    setIsLocked(false); // tapping a new cell always unlocks
     if (el) setFocusedRect(el.getBoundingClientRect());
+  }, []);
+
+  const lockCell = useCallback(() => {
+    setIsLocked(true);
+    setIsFresh(false);
+  }, []);
+
+  const unlockCell = useCallback(() => {
+    setIsLocked(false);
   }, []);
 
   const blur = useCallback(() => {
@@ -168,7 +183,7 @@ export function KeypadProvider({ children }: { children: ReactNode }) {
     }
   }, [focusedCell, isFresh, getCurrentValue, writeToCell]);
 
-  /** Write a number and immediately advance to the next cell. Single synchronous call. */
+  /** Write a number and immediately advance to the next cell — unless the cell is locked. */
   const writeAndAdvance = useCallback((c: string) => {
     if (!focusedCell) return;
     // Write to current cell
@@ -178,7 +193,12 @@ export function KeypadProvider({ children }: { children: ReactNode }) {
       const current = getCurrentValue();
       writeToCell(current + c);
     }
-    // Advance immediately using current focusedCell (not stale closure)
+    // If locked, stay on this cell (append mode)
+    if (isLocked) {
+      setIsFresh(false);
+      return;
+    }
+    // Advance
     let nextBeat = focusedCell.beatIdx + 1;
     let nextMeasure = focusedCell.measureIdx;
     if (nextBeat >= beatsPerMeasure) {
@@ -193,7 +213,7 @@ export function KeypadProvider({ children }: { children: ReactNode }) {
     setIsFresh(true);
     const el = document.querySelector<HTMLElement>(`[data-cell="${nextMeasure}-${nextBeat}"]`);
     if (el) setFocusedRect(el.getBoundingClientRect());
-  }, [focusedCell, isFresh, getCurrentValue, writeToCell, beatsPerMeasure, totalMeasures]);
+  }, [focusedCell, isFresh, isLocked, getCurrentValue, writeToCell, beatsPerMeasure, totalMeasures]);
 
   const clearBeat = useCallback(() => {
     writeToCell('');
@@ -224,7 +244,7 @@ export function KeypadProvider({ children }: { children: ReactNode }) {
         mode, setMode,
         focusedCell, focusedRect,
         totalMeasures, beatsPerMeasure,
-        isFresh,
+        isFresh, isLocked, lockCell, unlockCell,
         registerGrid, focusCell, blur,
         appendChar, writeAndAdvance, setBeatValue, clearBeat,
         advance, retreat,
