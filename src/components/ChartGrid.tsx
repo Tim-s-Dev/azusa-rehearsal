@@ -326,10 +326,10 @@ export default function ChartGrid({
                 <div className="flex gap-0.5 shrink-0">
                   <button
                     onClick={() => duplicateMeasure(iIdx)}
-                    className="p-1.5 rounded text-zinc-500 hover:text-cyan-400 hover:bg-white/5"
-                    title="Duplicate this measure"
+                    className="px-1.5 py-1 rounded text-[10px] font-bold text-cyan-400/70 hover:text-cyan-300 hover:bg-cyan-500/10 flex items-center gap-0.5"
+                    title="Duplicate this measure (with its numbers)"
                   >
-                    <Copy size={14} />
+                    <Copy size={12} /> DUP
                   </button>
                   <button
                     onClick={() => addMeasureBelow(iIdx)}

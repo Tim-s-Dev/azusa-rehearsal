@@ -22,6 +22,7 @@ interface KeypadContextValue {
   focusCell: (pos: CellPos, el: HTMLElement | null) => void;
   blur: () => void;
   appendChar: (c: string) => void;
+  writeAndAdvance: (c: string) => void;
   setBeatValue: (value: string) => void;
   clearBeat: () => void;
   advance: () => void;
@@ -159,7 +160,6 @@ export function KeypadProvider({ children }: { children: ReactNode }) {
   const appendChar = useCallback((c: string) => {
     if (!focusedCell) return;
     if (isFresh) {
-      // Fresh cell: replace, then mark dirty (so subsequent taps append)
       writeToCell(c);
       setIsFresh(false);
     } else {
@@ -167,6 +167,33 @@ export function KeypadProvider({ children }: { children: ReactNode }) {
       writeToCell(current + c);
     }
   }, [focusedCell, isFresh, getCurrentValue, writeToCell]);
+
+  /** Write a number and immediately advance to the next cell. Single synchronous call. */
+  const writeAndAdvance = useCallback((c: string) => {
+    if (!focusedCell) return;
+    // Write to current cell
+    if (isFresh) {
+      writeToCell(c);
+    } else {
+      const current = getCurrentValue();
+      writeToCell(current + c);
+    }
+    // Advance immediately using current focusedCell (not stale closure)
+    let nextBeat = focusedCell.beatIdx + 1;
+    let nextMeasure = focusedCell.measureIdx;
+    if (nextBeat >= beatsPerMeasure) {
+      nextBeat = 0;
+      nextMeasure += 1;
+    }
+    if (nextMeasure >= totalMeasures) {
+      setIsFresh(false);
+      return;
+    }
+    setFocusedCell({ measureIdx: nextMeasure, beatIdx: nextBeat });
+    setIsFresh(true);
+    const el = document.querySelector<HTMLElement>(`[data-cell="${nextMeasure}-${nextBeat}"]`);
+    if (el) setFocusedRect(el.getBoundingClientRect());
+  }, [focusedCell, isFresh, getCurrentValue, writeToCell, beatsPerMeasure, totalMeasures]);
 
   const clearBeat = useCallback(() => {
     writeToCell('');
@@ -199,7 +226,7 @@ export function KeypadProvider({ children }: { children: ReactNode }) {
         totalMeasures, beatsPerMeasure,
         isFresh,
         registerGrid, focusCell, blur,
-        appendChar, setBeatValue, clearBeat,
+        appendChar, writeAndAdvance, setBeatValue, clearBeat,
         advance, retreat,
         insertMeasureAfter, toggleOut,
         registerWriteHandler,

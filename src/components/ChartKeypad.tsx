@@ -73,10 +73,8 @@ export default function ChartKeypad() {
 
   const handleKey = (key: typeof KEYS[number]) => {
     if (key.type === 'num') {
-      // Number keys: write value and auto-advance to next cell
-      k.appendChar(key.value);
-      // Small delay so the write completes before advancing
-      setTimeout(() => k.advance(), 30);
+      // Number keys: write + auto-advance to next cell in one synchronous call
+      k.writeAndAdvance(key.value);
     } else if (key.type === 'mod') {
       // Modifiers append without advancing (m, /, 7th, sus, dim, #, b)
       k.appendChar(key.value);
