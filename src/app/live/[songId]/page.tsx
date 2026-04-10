@@ -46,11 +46,14 @@ export default function LivePage({ params }: LivePageProps) {
   const [setSongs, setSetSongs] = useState<Song[]>([]);
   const [confInfo, setConfInfo] = useState<{ confId: string; eventId: string; setId: string } | null>(null);
   const [autoScroll, setAutoScroll] = useState(true);
+  const [scrollSpeed, setScrollSpeed] = useState(1); // multiplier: 0.5x 1x 2x
   const [editMode, setEditMode] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loopA, setLoopA] = useState<number | null>(null);
   const [loopB, setLoopB] = useState<number | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const autoScrollTimerRef = useRef<number | null>(null);
   const keypad = useKeypad();
   const lastManualScrollRef = useRef(0);
   const sectionRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -108,10 +111,35 @@ export default function LivePage({ params }: LivePageProps) {
     return structure.findIndex(s => currentTime >= s.start && currentTime < s.end);
   }, [structure, currentTime, isCurrentSong]);
 
-  // Auto-scroll to current section
+  // Continuous auto-scroll: scrolls the page at a rate based on BPM × speed multiplier
+  // When the song is playing + autoScroll is on, the page teleprompter-scrolls
+  useEffect(() => {
+    if (!autoScroll || !player.isPlaying || !isCurrentSong) {
+      if (autoScrollTimerRef.current) { cancelAnimationFrame(autoScrollTimerRef.current); autoScrollTimerRef.current = null; }
+      return;
+    }
+    // Pixels per second: ~40px/s at 100bpm × scrollSpeed, scale linearly
+    const bpm = song?.bpm || 90;
+    const pxPerSec = (bpm / 100) * 40 * scrollSpeed;
+
+    let lastT = performance.now();
+    const tick = (now: number) => {
+      // Pause if user touched the screen recently
+      if (Date.now() - lastManualScrollRef.current > 3000) {
+        const dt = (now - lastT) / 1000;
+        window.scrollBy(0, pxPerSec * dt);
+      }
+      lastT = now;
+      autoScrollTimerRef.current = requestAnimationFrame(tick);
+    };
+    autoScrollTimerRef.current = requestAnimationFrame(tick);
+    return () => { if (autoScrollTimerRef.current) cancelAnimationFrame(autoScrollTimerRef.current); };
+  }, [autoScroll, scrollSpeed, player.isPlaying, isCurrentSong, song?.bpm]);
+
+  // Also snap to current section when it changes (in addition to continuous scroll)
   useEffect(() => {
     if (!autoScroll || currentSectionIdx < 0) return;
-    if (Date.now() - lastManualScrollRef.current < 5000) return;
+    if (Date.now() - lastManualScrollRef.current < 3000) return;
     sectionRefs.current[currentSectionIdx]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [currentSectionIdx, autoScroll]);
 
@@ -280,13 +308,28 @@ export default function LivePage({ params }: LivePageProps) {
           >
             {editMode ? (saving ? 'SAVING' : dirty ? 'EDIT ●' : 'EDIT ✓') : 'EDIT'}
           </button>
-          <button
-            onClick={() => setAutoScroll(!autoScroll)}
-            className={`px-2 py-1 rounded text-[10px] font-bold ${autoScroll ? 'bg-violet-500/30 text-violet-200' : 'bg-white/5 text-zinc-500'}`}
-            title="Auto-scroll to current section"
-          >
-            AUTO
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setAutoScroll(!autoScroll)}
+              className={`px-2 py-1 rounded-l text-[10px] font-bold ${autoScroll ? 'bg-violet-500/30 text-violet-200' : 'bg-white/5 text-zinc-500'}`}
+              title="Auto-scroll"
+            >
+              {autoScroll ? '⏬ ON' : 'SCROLL'}
+            </button>
+            {autoScroll && (
+              <select
+                value={scrollSpeed}
+                onChange={(e) => setScrollSpeed(parseFloat(e.target.value))}
+                className="bg-violet-500/20 text-violet-200 text-[10px] font-bold rounded-r border-0 py-1 px-1"
+              >
+                <option value={0.5}>0.5×</option>
+                <option value={1}>1×</option>
+                <option value={1.5}>1.5×</option>
+                <option value={2}>2×</option>
+                <option value={3}>3×</option>
+              </select>
+            )}
+          </div>
         </div>
       </div>
 

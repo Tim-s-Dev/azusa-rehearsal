@@ -14,9 +14,11 @@ interface NumberChartEditorProps {
   songKey: string | null;
   audioFiles?: SongFile[];
   onDissectComplete?: () => void;
+  /** Section timestamps from song.structure for seek buttons */
+  sectionTimestamps?: Record<number, number>;
 }
 
-export default function NumberChartEditor({ songId, songKey, audioFiles = [], onDissectComplete }: NumberChartEditorProps) {
+export default function NumberChartEditor({ songId, songKey, audioFiles = [], onDissectComplete, sectionTimestamps }: NumberChartEditorProps) {
   const [items, setItems] = useState<ChartItem[]>([
     { type: 'measure', section: 'Intro', beats: ['', '', '', ''] },
   ]);
@@ -256,6 +258,7 @@ export default function NumberChartEditor({ songId, songKey, audioFiles = [], on
         beatsPerMeasure={beatsPerMeasure}
         onChange={updateItems}
         onDuplicateSection={duplicateSection}
+        sectionTimestamps={sectionTimestamps}
       />
 
       {/* Add buttons */}

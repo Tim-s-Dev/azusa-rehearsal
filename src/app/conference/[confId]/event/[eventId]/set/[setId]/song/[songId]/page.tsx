@@ -188,6 +188,15 @@ export default function SongPage() {
               songKey={song?.key || null}
               audioFiles={files}
               onDissectComplete={onDissectComplete}
+              sectionTimestamps={(() => {
+                const ts: Record<number, number> = {};
+                if (song?.structure && Array.isArray(song.structure)) {
+                  (song.structure as { start?: number }[]).forEach((s, i) => {
+                    if (typeof s.start === 'number') ts[i] = s.start;
+                  });
+                }
+                return ts;
+              })()}
             />
           </div>
         </TabsContent>

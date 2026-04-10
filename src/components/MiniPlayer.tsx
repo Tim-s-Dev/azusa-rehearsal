@@ -54,8 +54,12 @@ export default function MiniPlayer() {
                 <p className="text-xs text-zinc-500 truncate">{trackName}</p>
               </Link>
             </div>
-            <div className="flex items-center gap-1 text-xs text-zinc-500 font-mono mr-1">
-              {formatTime(currentTime)} / {formatTime(duration)}
+            <div className="flex items-center gap-0.5">
+              <button onClick={() => seek(Math.max(0, currentTime - 15))} className="px-1 py-0.5 rounded text-[9px] font-bold text-zinc-500 hover:text-zinc-200 hover:bg-white/5">-15</button>
+              <button onClick={() => seek(Math.max(0, currentTime - 5))} className="px-1 py-0.5 rounded text-[9px] font-bold text-zinc-500 hover:text-zinc-200 hover:bg-white/5">-5</button>
+              <span className="text-[10px] text-zinc-500 font-mono px-1">{formatTime(currentTime)}</span>
+              <button onClick={() => seek(currentTime + 5)} className="px-1 py-0.5 rounded text-[9px] font-bold text-zinc-500 hover:text-zinc-200 hover:bg-white/5">+5</button>
+              <button onClick={() => seek(currentTime + 15)} className="px-1 py-0.5 rounded text-[9px] font-bold text-zinc-500 hover:text-zinc-200 hover:bg-white/5">+15</button>
             </div>
             <button
               onClick={metronome.toggle}

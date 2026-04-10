@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Plus, Trash2, Copy, X, MessageSquare, Mic } from 'lucide-react';
+import { Plus, Trash2, Copy, X, MessageSquare, Mic, Play } from 'lucide-react';
 import type { ChartMeasure, ChartItem, ChartNote, ChartLyric } from '@/lib/types';
 import { isMeasure } from '@/lib/types';
 import { useKeypad } from './KeypadProvider';
+import { usePlayer } from './PlayerProvider';
 
 interface ChartGridProps {
   /** Full ChartItem list (measures + notes + lyrics interleaved) */
@@ -17,22 +18,36 @@ interface ChartGridProps {
   showAddRemove?: boolean;
   /** Called when user clicks "duplicate" on a section header. Index is local to this slice. */
   onDuplicateSection?: (sectionStartIdx: number) => void;
+  /** Map of section index → start timestamp in seconds (used for seek-to-section buttons) */
+  sectionTimestamps?: Record<number, number>;
 }
 
 const SECTIONS = ['Intro', 'Verse', 'Pre-Chorus', 'Chorus', 'Bridge', 'Interlude', 'Outro', 'Tag', 'Instrumental', 'Vamp'];
 
-function SectionHeader({ measure, itemIdx, sectionIdx, totalSections, reorderSection, updateSection, onDuplicateSection }: {
+function SectionHeader({ measure, itemIdx, sectionIdx, totalSections, sectionTimestamp, reorderSection, updateSection, onDuplicateSection }: {
   measure: ChartMeasure;
   itemIdx: number;
   sectionIdx: number;
   totalSections: number;
+  sectionTimestamp?: number;
   reorderSection: (from: number, to: number) => void;
   updateSection: (iIdx: number, section: string) => void;
   onDuplicateSection?: (iIdx: number) => void;
 }) {
+  const player = usePlayer();
+  const seekHere = () => {
+    if (sectionTimestamp !== undefined && player.song) {
+      player.seek(sectionTimestamp);
+    }
+  };
+  const formatT = (s: number) => {
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return `${m}:${sec.toString().padStart(2, '0')}`;
+  };
   return (
     <div className="flex items-center gap-1.5 mt-3 mb-1 rounded-lg px-1 py-0.5">
-      {/* Up / Down arrow buttons — reliable on touch */}
+      {/* Up / Down */}
       <div className="flex flex-col shrink-0">
         <button
           onClick={() => { if (sectionIdx > 0) reorderSection(sectionIdx, sectionIdx - 1); }}
@@ -51,6 +66,16 @@ function SectionHeader({ measure, itemIdx, sectionIdx, totalSections, reorderSec
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 10L2 5h8L6 10z" fill="currentColor"/></svg>
         </button>
       </div>
+      {/* Seek button */}
+      {sectionTimestamp !== undefined && (
+        <button
+          onClick={seekHere}
+          className="p-1.5 rounded-lg bg-violet-500/10 hover:bg-violet-500/20 text-violet-300 shrink-0"
+          title={`Jump to ${formatT(sectionTimestamp)}`}
+        >
+          <Play size={12} />
+        </button>
+      )}
       <select
         value={SECTIONS.includes(measure.section || '') ? measure.section : '__custom__'}
         onChange={(e) => {
@@ -99,6 +124,7 @@ export default function ChartGrid({
   showSectionHeaders = true,
   showAddRemove = true,
   onDuplicateSection,
+  sectionTimestamps,
 }: ChartGridProps) {
   const keypad = useKeypad();
   const itemsRef = useRef(items);
@@ -397,6 +423,7 @@ export default function ChartGrid({
               itemIdx={iIdx}
               sectionIdx={getSectionIdx(iIdx)}
               totalSections={sectionStarts.length}
+              sectionTimestamp={sectionTimestamps?.[getSectionIdx(iIdx)]}
               reorderSection={reorderSection}
               updateSection={updateSection}
               onDuplicateSection={onDuplicateSection}
