@@ -349,64 +349,18 @@ export default function LivePage({ params }: LivePageProps) {
 
   return (
     <div className="min-h-screen pb-32" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
-      {/* Top bar */}
+      {/* Sticky header — always visible */}
       <div className="sticky top-0 z-30 glass border-b border-white/10 backdrop-blur-xl">
-        <div className="max-w-4xl mx-auto px-3 py-2 flex items-center gap-2">
-          <Link
-            href={confInfo ? `/conference/${confInfo.confId}/event/${confInfo.eventId}/set/${confInfo.setId}/song/${songId}` : '/'}
-            className="p-2 rounded-lg hover:bg-white/10"
-            title="Exit Live Mode"
-          >
-            <X size={16} />
-          </Link>
-          <div className="flex-1 min-w-0 text-center">
-            <div className="text-[10px] uppercase tracking-widest text-violet-400">LIVE</div>
-            <div className="text-sm font-bold truncate">{song.title}</div>
-          </div>
-          <button
-            onClick={recording ? stopRecording : startRecording}
-            className={`px-2 py-1 rounded text-[10px] font-bold ${recording ? 'bg-red-500/30 text-red-300 animate-pulse' : 'bg-white/5 text-zinc-500'}`}
-            title={recording ? 'Stop recording sections' : 'Record: play the song and tap sections to mark timestamps'}
-          >
-            <Circle size={8} className={`inline mr-0.5 ${recording ? 'fill-red-400' : ''}`} />
-            {recording ? 'REC' : 'TAG'}
-          </button>
-          <button
-            onClick={toggleEditMode}
-            className={`px-2 py-1 rounded text-[10px] font-bold ${editMode ? 'bg-amber-500/30 text-amber-200' : 'bg-white/5 text-zinc-500'}`}
-            title="Toggle edit mode"
-          >
-            {editMode ? (saving ? 'SAVING' : dirty ? 'EDIT ●' : 'EDIT ✓') : 'EDIT'}
-          </button>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => setAutoScroll(!autoScroll)}
-              className={`px-2 py-1 rounded-l text-[10px] font-bold ${autoScroll ? 'bg-violet-500/30 text-violet-200' : 'bg-white/5 text-zinc-500'}`}
-              title="Auto-scroll"
+        <div className="max-w-4xl mx-auto px-3 py-1.5 space-y-1">
+          {/* Row 1: Song info + key */}
+          <div className="flex items-center gap-2">
+            <Link
+              href={confInfo ? `/conference/${confInfo.confId}/event/${confInfo.eventId}/set/${confInfo.setId}/song/${songId}` : '/'}
+              className="p-1.5 rounded-lg hover:bg-white/10 shrink-0"
+              title="Exit Live Mode"
             >
-              {autoScroll ? '⏬ ON' : 'SCROLL'}
-            </button>
-            {autoScroll && (
-              <select
-                value={scrollSpeed}
-                onChange={(e) => setScrollSpeed(parseFloat(e.target.value))}
-                className="bg-violet-500/20 text-violet-200 text-[10px] font-bold rounded-r border-0 py-1 px-1"
-              >
-                <option value={0.5}>0.5×</option>
-                <option value={1}>1×</option>
-                <option value={1.5}>1.5×</option>
-                <option value={2}>2×</option>
-                <option value={3}>3×</option>
-              </select>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Hero */}
-      <div className="max-w-4xl mx-auto px-4 py-6">
-        <div className="text-center mb-6">
-          <div className="flex items-center justify-center gap-3 mb-2">
+              <X size={14} />
+            </Link>
             <select
               value={song.key || ''}
               onChange={async (e) => {
@@ -418,8 +372,7 @@ export default function LivePage({ params }: LivePageProps) {
                 });
                 setSong(prev => prev ? { ...prev, key: newKey } : null);
               }}
-              className="px-3 py-1.5 rounded-full bg-violet-600 text-white text-sm font-bold border border-violet-500 cursor-pointer"
-              title="Tap to change key"
+              className="px-2 py-0.5 rounded-full bg-violet-600 text-white text-xs font-bold border border-violet-500 cursor-pointer shrink-0"
             >
               <option value="">KEY</option>
               {['C','C#','Db','D','D#','Eb','E','F','F#','Gb','G','G#','Ab','A','A#','Bb','B',
@@ -427,15 +380,56 @@ export default function LivePage({ params }: LivePageProps) {
                 <option key={k} value={k}>{k}</option>
               ))}
             </select>
+            <div className="flex-1 min-w-0 text-center">
+              <div className="text-sm font-bold truncate">{song.title}</div>
+              {song.artist && <div className="text-[10px] text-zinc-500 truncate">{song.artist}</div>}
+            </div>
             {song.bpm && (
-              <span className="px-3 py-1 rounded-full glass text-sm font-mono">
-                {song.bpm} BPM
-              </span>
+              <span className="text-xs font-mono text-zinc-400 shrink-0">{song.bpm}</span>
             )}
           </div>
-          <h1 className="text-5xl font-bold tracking-tight">{song.title}</h1>
-          {song.artist && <p className="text-zinc-400 mt-1">{song.artist}</p>}
+          {/* Row 2: Action buttons */}
+          <div className="flex items-center gap-1 justify-center">
+            <button
+              onClick={recording ? stopRecording : startRecording}
+              className={`px-2 py-0.5 rounded text-[10px] font-bold ${recording ? 'bg-red-500/30 text-red-300 animate-pulse' : 'bg-white/5 text-zinc-500'}`}
+            >
+              <Circle size={7} className={`inline mr-0.5 ${recording ? 'fill-red-400' : ''}`} />
+              {recording ? 'REC' : 'TAG'}
+            </button>
+            <button
+              onClick={toggleEditMode}
+              className={`px-2 py-0.5 rounded text-[10px] font-bold ${editMode ? 'bg-amber-500/30 text-amber-200' : 'bg-white/5 text-zinc-500'}`}
+            >
+              {editMode ? (saving ? 'SAVING' : dirty ? 'EDIT ●' : 'EDIT ✓') : 'EDIT'}
+            </button>
+            <div className="flex items-center">
+              <button
+                onClick={() => setAutoScroll(!autoScroll)}
+                className={`px-2 py-0.5 rounded-l text-[10px] font-bold ${autoScroll ? 'bg-violet-500/30 text-violet-200' : 'bg-white/5 text-zinc-500'}`}
+              >
+                {autoScroll ? '⏬' : 'SCROLL'}
+              </button>
+              {autoScroll && (
+                <select
+                  value={scrollSpeed}
+                  onChange={(e) => setScrollSpeed(parseFloat(e.target.value))}
+                  className="bg-violet-500/20 text-violet-200 text-[10px] font-bold rounded-r border-0 py-0.5 px-1"
+                >
+                  <option value={0.5}>0.5×</option>
+                  <option value={1}>1×</option>
+                  <option value={1.5}>1.5×</option>
+                  <option value={2}>2×</option>
+                  <option value={3}>3×</option>
+                </select>
+              )}
+            </div>
+          </div>
         </div>
+      </div>
+
+      {/* Chart content */}
+      <div className="max-w-4xl mx-auto px-4 py-4">
 
         {/* Big chart */}
         <div className="space-y-6">
