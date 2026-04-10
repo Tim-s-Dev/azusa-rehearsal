@@ -53,6 +53,7 @@ export default function LivePage({ params }: LivePageProps) {
   const [loopA, setLoopA] = useState<number | null>(null);
   const [loopB, setLoopB] = useState<number | null>(null);
   const [recording, setRecording] = useState(false);
+  const [timelineExpanded, setTimelineExpanded] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const autoScrollTimerRef = useRef<number | null>(null);
   const keypad = useKeypad();
@@ -104,7 +105,13 @@ export default function LivePage({ params }: LivePageProps) {
 
   // Group items by section
   const groups = useMemo(() => groupMeasuresBySection(items), [items]);
-  const structure = useMemo(() => normalizeStructure(song?.structure), [song?.structure]);
+  // Use separate state for structure so tagging updates instantly
+  const [sections, setSections] = useState<SongStructureSection[]>([]);
+  useEffect(() => {
+    setSections(normalizeStructure(song?.structure));
+  }, [song?.structure]);
+  // Alias for backward compat
+  const structure = sections;
 
   // Find which section is currently playing
   const currentSectionIdx = useMemo(() => {
@@ -127,8 +134,14 @@ export default function LivePage({ params }: LivePageProps) {
     const tick = (now: number) => {
       // Pause if user touched the screen recently
       if (Date.now() - lastManualScrollRef.current > 3000) {
-        const dt = (now - lastT) / 1000;
-        window.scrollBy(0, pxPerSec * dt);
+        // When recording, don't scroll past the point where content would go behind the tag panel
+        const maxScroll = recording
+          ? document.documentElement.scrollHeight - window.innerHeight - 280 // leave room for tag panel + timeline
+          : document.documentElement.scrollHeight;
+        if (window.scrollY < maxScroll) {
+          const dt = (now - lastT) / 1000;
+          window.scrollBy(0, pxPerSec * dt);
+        }
       }
       lastT = now;
       autoScrollTimerRef.current = requestAnimationFrame(tick);
@@ -267,50 +280,51 @@ export default function LivePage({ params }: LivePageProps) {
 
   const startRecording = () => {
     setRecording(true);
+    setTimelineExpanded(true); // show expanded timeline while recording
     if (isCurrentSong && !player.isPlaying) player.togglePlay();
   };
 
-  const stopRecording = async () => {
+  const stopRecording = () => {
     setRecording(false);
-    // Close the last open section at the current time
-    if (song && structure.length > 0) {
-      const last = structure[structure.length - 1];
-      if (last.end <= last.start || last.end < currentTime) {
-        const updated = [...structure];
-        updated[updated.length - 1] = { ...last, end: currentTime };
-        await fetch('/api/songs', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: songId, structure: updated }),
-        });
-        setSong(prev => prev ? { ...prev, structure: updated } : null);
-      }
+    if (sections.length > 0) {
+      const updated = [...sections];
+      const last = updated[updated.length - 1];
+      updated[updated.length - 1] = { ...last, end: Math.max(last.start + 1, currentTime) };
+      setSections(updated);
+      // Save async
+      fetch('/api/songs', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: songId, structure: updated }),
+      });
     }
   };
 
-  const tagSection = async (type: string, label: string) => {
-    if (!isCurrentSong || !song) return;
+  const tagSection = (type: string, label: string) => {
+    if (!isCurrentSong) return;
     const t = currentTime;
-    const updated = [...structure];
-    // Close the previous section at this time
+    const updated = [...sections];
+    // Close the previous section's end at this time
     if (updated.length > 0) {
       const last = updated[updated.length - 1];
       updated[updated.length - 1] = { ...last, end: t };
     }
-    // Add new section starting at this time
+    // New section starts at this time
     updated.push({
       name: label,
       type: type as SongStructureSection['type'],
       start: t,
-      end: t + 30, // placeholder end — will be closed by next tag or stopRecording
+      end: t + 60, // placeholder — will be closed by next tag or stop
       markers: [],
     });
-    await fetch('/api/songs', {
+    // Update state immediately (renders the colored bar instantly)
+    setSections(updated);
+    // Save async (don't await — keep UI snappy)
+    fetch('/api/songs', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: songId, structure: updated }),
     });
-    setSong(prev => prev ? { ...prev, structure: updated } : null);
   };
 
   // Prev/next song nav (in same set)
@@ -563,44 +577,59 @@ export default function LivePage({ params }: LivePageProps) {
         </div>
       )}
 
-      {/* Colored section progress bar */}
+      {/* Colored section timeline bar — tap to expand */}
       {structure.length > 0 && player.duration > 0 && (
         <div className="fixed bottom-[185px] left-0 right-0 z-40 px-4">
           <div className="max-w-4xl mx-auto">
-            <div className="flex h-4 rounded-full overflow-hidden bg-zinc-900/80 border border-white/5 relative">
-              {structure.map((sec, i) => {
-                const startPct = (sec.start / player.duration) * 100;
-                const widthPct = ((sec.end - sec.start) / player.duration) * 100;
-                const tagDef = TAG_TYPES.find(t => t.type === sec.type) || TAG_TYPES[0];
-                return (
-                  <button
-                    key={i}
-                    onClick={() => { if (isCurrentSong) player.seek(sec.start); }}
-                    className="absolute top-0 bottom-0 transition-all hover:brightness-150"
-                    style={{
-                      left: `${startPct}%`,
-                      width: `${Math.max(widthPct, 0.5)}%`,
-                      backgroundColor: tagDef.color + '60',
-                      borderRight: '1px solid rgba(0,0,0,0.3)',
-                    }}
-                    title={`${sec.name} (${formatTime(sec.start)})`}
-                  >
-                    {widthPct > 6 && (
-                      <span className="text-[7px] font-bold text-white/80 truncate block px-0.5 leading-4">
-                        {sec.name}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-              {/* Playhead */}
-              {isCurrentSong && (
-                <div
-                  className="absolute top-0 bottom-0 w-0.5 bg-white z-10 shadow-lg shadow-white/50"
-                  style={{ left: `${(currentTime / player.duration) * 100}%` }}
-                />
-              )}
-            </div>
+            <button
+              onClick={() => setTimelineExpanded(!timelineExpanded)}
+              className="w-full text-left"
+              title={timelineExpanded ? 'Tap to collapse' : 'Tap to expand'}
+            >
+              <div className={`flex rounded-xl overflow-hidden bg-zinc-900/90 border border-white/10 relative transition-all ${
+                timelineExpanded ? 'h-12' : 'h-3'
+              }`}>
+                {structure.map((sec, i) => {
+                  const dur = player.duration;
+                  const startPct = (sec.start / dur) * 100;
+                  const widthPct = ((Math.min(sec.end, dur) - sec.start) / dur) * 100;
+                  const tagDef = TAG_TYPES.find(t => t.type === sec.type) || TAG_TYPES[0];
+                  const isCurrSec = i === currentSectionIdx;
+                  return (
+                    <div
+                      key={i}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (isCurrentSong) player.seek(sec.start);
+                      }}
+                      className={`absolute top-0 bottom-0 transition-all cursor-pointer ${
+                        isCurrSec ? 'brightness-150 z-[1]' : 'hover:brightness-125'
+                      }`}
+                      style={{
+                        left: `${startPct}%`,
+                        width: `${Math.max(widthPct, 0.8)}%`,
+                        backgroundColor: tagDef.color + (isCurrSec ? '90' : '50'),
+                        borderRight: '1px solid rgba(0,0,0,0.4)',
+                      }}
+                    >
+                      {timelineExpanded && (
+                        <div className="px-1 py-0.5 h-full flex flex-col justify-center overflow-hidden">
+                          <div className="text-[9px] font-bold text-white truncate leading-tight">{sec.name}</div>
+                          <div className="text-[7px] text-white/60 font-mono">{formatTime(sec.start)}</div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                {/* Playhead */}
+                {isCurrentSong && (
+                  <div
+                    className="absolute top-0 bottom-0 w-0.5 bg-white z-10 shadow-lg shadow-white/50"
+                    style={{ left: `${(currentTime / player.duration) * 100}%` }}
+                  />
+                )}
+              </div>
+            </button>
           </div>
         </div>
       )}
