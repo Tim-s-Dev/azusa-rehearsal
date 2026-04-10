@@ -201,21 +201,37 @@ export default function LivePage({ params }: LivePageProps) {
     setDirty(true);
   };
 
-  // Register keypad write/value handlers when in edit mode
+  // Register keypad handlers when in edit mode
   useEffect(() => {
     if (!editMode) return;
     const writer = (pos: { measureIdx: number; beatIdx: number }, value: string) => {
       updateBeat(pos.measureIdx, pos.beatIdx, value);
     };
-    const unsub1 = keypad.registerWriteHandler(writer);
     const getter = (pos: { measureIdx: number; beatIdx: number }) => {
       const item = itemsRef.current[pos.measureIdx];
       if (!isMeasure(item)) return undefined;
       return item.beats[pos.beatIdx] || '';
     };
+    const inserter = (afterIdx: number) => {
+      const next = [...itemsRef.current];
+      next.splice(afterIdx + 1, 0, { type: 'measure' as const, beats: ['', '', '', ''] });
+      setItems(next);
+      setDirty(true);
+    };
+    const outToggler = (idx: number) => {
+      const next = [...itemsRef.current];
+      const item = next[idx];
+      if (!isMeasure(item)) return;
+      next[idx] = { ...item, out: !item.out };
+      setItems(next);
+      setDirty(true);
+    };
+    const unsub1 = keypad.registerWriteHandler(writer);
     const unsub2 = keypad.registerValueGetter(getter);
+    const unsub3 = keypad.registerInsertHandler(inserter);
+    const unsub4 = keypad.registerOutHandler(outToggler);
     keypad.registerGrid(items.length, 4);
-    return () => { unsub1(); unsub2(); };
+    return () => { unsub1(); unsub2(); unsub3(); unsub4(); };
   }, [editMode, keypad, items.length]);
 
   const handleCellTap = (e: React.MouseEvent, itemIdx: number, beatIdx: number) => {
