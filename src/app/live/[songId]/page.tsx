@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useMemo, use } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, ChevronRight, Play, Pause, X, Pencil, MessageSquare, Mic, Save } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Play, Pause, X, Pencil, MessageSquare, Mic, Save, SkipBack, SkipForward, Repeat } from 'lucide-react';
 import type { Song, SongFile, ChartItem, SongStructureSection, ChartMeasure, ChartNote, ChartLyric } from '@/lib/types';
 import { isMeasure, SECTION_COLORS, normalizeSectionType } from '@/lib/types';
 import { groupMeasuresBySection } from '@/lib/structure';
@@ -49,6 +49,8 @@ export default function LivePage({ params }: LivePageProps) {
   const [editMode, setEditMode] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [loopA, setLoopA] = useState<number | null>(null);
+  const [loopB, setLoopB] = useState<number | null>(null);
   const keypad = useKeypad();
   const lastManualScrollRef = useRef(0);
   const sectionRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -186,6 +188,41 @@ export default function LivePage({ params }: LivePageProps) {
     setEditMode(!editMode);
   };
 
+  // ── A→B Loop enforcement ───────────────────────────────────────
+  useEffect(() => {
+    if (!isCurrentSong || loopA === null || loopB === null) return;
+    if (loopB <= loopA) return;
+    if (currentTime >= loopB) {
+      player.seek(loopA);
+    }
+  }, [currentTime, loopA, loopB, isCurrentSong, player]);
+
+  const nudge = (seconds: number) => {
+    if (!isCurrentSong) return;
+    player.seek(Math.max(0, currentTime + seconds));
+  };
+
+  const setLoopPoint = (point: 'A' | 'B') => {
+    if (!isCurrentSong) return;
+    if (point === 'A') {
+      setLoopA(currentTime);
+      if (loopB !== null && currentTime >= loopB) setLoopB(null);
+    } else {
+      setLoopB(currentTime);
+      if (loopA === null) setLoopA(0);
+    }
+  };
+
+  const clearLoop = () => { setLoopA(null); setLoopB(null); };
+
+  const loopSection = (sec: SongStructureSection) => {
+    setLoopA(sec.start);
+    setLoopB(sec.end);
+    if (isCurrentSong) player.seek(sec.start);
+  };
+
+  const isLooping = loopA !== null && loopB !== null;
+
   // Prev/next song nav (in same set)
   const sortedSetSongs = useMemo(
     () => [...setSongs].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)),
@@ -295,11 +332,22 @@ export default function LivePage({ params }: LivePageProps) {
                     <h2 className={`text-2xl font-bold uppercase tracking-wider ${colors.text}`}>
                       {group.sectionLabel}
                     </h2>
-                    {struct && (
-                      <span className="text-sm font-mono text-zinc-500">
-                        {formatTime(struct.start)}–{formatTime(struct.end)}
-                      </span>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {struct && (
+                        <button
+                          onClick={() => loopSection(struct)}
+                          className={`text-sm font-mono px-2 py-0.5 rounded transition-all ${
+                            isLooping && loopA === struct.start && loopB === struct.end
+                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                              : 'text-zinc-500 hover:text-emerald-400 hover:bg-emerald-500/10'
+                          }`}
+                          title="Loop this section"
+                        >
+                          <Repeat size={12} className="inline mr-1" />
+                          {formatTime(struct.start)}–{formatTime(struct.end)}
+                        </button>
+                      )}
+                    </div>
                   </div>
                   {/* Render items inside this group */}
                   <div className="space-y-2">
@@ -370,36 +418,79 @@ export default function LivePage({ params }: LivePageProps) {
         </div>
       </div>
 
-      {/* Bottom nav bar */}
-      <div className="fixed bottom-24 left-0 right-0 z-40 px-4">
-        <div className="max-w-4xl mx-auto glass rounded-2xl p-2 flex items-center gap-2 shadow-2xl shadow-black/50">
-          <button
-            onClick={() => navigate(prevSong)}
-            disabled={!prevSong}
-            className="p-3 rounded-xl bg-white/5 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-2"
-          >
-            <ChevronLeft size={20} />
-            <span className="text-xs hidden sm:block max-w-[120px] truncate">{prevSong?.title || 'Start'}</span>
-          </button>
-          <div className="flex-1 text-center">
-            <div className="text-[10px] uppercase tracking-widest text-zinc-500">
-              {currentIdx + 1} / {sortedSetSongs.length}
-            </div>
+      {/* Bottom control bar */}
+      <div className="fixed bottom-24 left-0 right-0 z-40 px-2">
+        <div className="max-w-4xl mx-auto glass rounded-2xl p-2 shadow-2xl shadow-black/50 space-y-2">
+          {/* Row 1: Nudge + Play + Prev/Next */}
+          <div className="flex items-center gap-1">
             <button
-              onClick={() => isCurrentSong && player.togglePlay()}
-              className="p-2.5 rounded-full bg-gradient-to-br from-violet-600 to-fuchsia-600 text-white shadow-lg shadow-violet-600/30"
+              onClick={() => navigate(prevSong)}
+              disabled={!prevSong}
+              className="p-2 rounded-lg bg-white/5 hover:bg-white/10 disabled:opacity-20"
+              title="Previous song"
             >
-              {player.isPlaying ? <Pause size={20} /> : <Play size={20} className="ml-0.5" />}
+              <ChevronLeft size={18} />
+            </button>
+            <button onClick={() => nudge(-15)} className="px-2 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[10px] font-bold text-zinc-300">
+              −15s
+            </button>
+            <button onClick={() => nudge(-5)} className="px-2 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[10px] font-bold text-zinc-300">
+              −5s
+            </button>
+            <div className="flex-1 flex justify-center">
+              <button
+                onClick={() => isCurrentSong && player.togglePlay()}
+                className="p-3 rounded-full bg-gradient-to-br from-violet-600 to-fuchsia-600 text-white shadow-lg shadow-violet-600/30"
+              >
+                {player.isPlaying ? <Pause size={22} /> : <Play size={22} className="ml-0.5" />}
+              </button>
+            </div>
+            <button onClick={() => nudge(5)} className="px-2 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[10px] font-bold text-zinc-300">
+              +5s
+            </button>
+            <button onClick={() => nudge(15)} className="px-2 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[10px] font-bold text-zinc-300">
+              +15s
+            </button>
+            <button
+              onClick={() => navigate(nextSong)}
+              disabled={!nextSong}
+              className="p-2 rounded-lg bg-white/5 hover:bg-white/10 disabled:opacity-20"
+              title="Next song"
+            >
+              <ChevronRight size={18} />
             </button>
           </div>
-          <button
-            onClick={() => navigate(nextSong)}
-            disabled={!nextSong}
-            className="p-3 rounded-xl bg-white/5 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-2"
-          >
-            <span className="text-xs hidden sm:block max-w-[120px] truncate">{nextSong?.title || 'End'}</span>
-            <ChevronRight size={20} />
-          </button>
+          {/* Row 2: A→B Loop */}
+          <div className="flex items-center gap-1.5 justify-center">
+            <button
+              onClick={() => setLoopPoint('A')}
+              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold ${
+                loopA !== null ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-white/5 text-zinc-400'
+              }`}
+            >
+              A {loopA !== null ? formatTime(loopA) : '—'}
+            </button>
+            <Repeat size={14} className={isLooping ? 'text-emerald-400' : 'text-zinc-600'} />
+            <button
+              onClick={() => setLoopPoint('B')}
+              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold ${
+                loopB !== null ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-white/5 text-zinc-400'
+              }`}
+            >
+              B {loopB !== null ? formatTime(loopB) : '—'}
+            </button>
+            {isLooping && (
+              <button
+                onClick={clearLoop}
+                className="px-2 py-1 rounded-lg bg-red-500/10 text-red-300 text-[10px] font-bold"
+              >
+                Clear
+              </button>
+            )}
+            <div className="text-[10px] text-zinc-600 font-mono ml-2">
+              {formatTime(currentTime)} / {formatTime(player.duration)}
+            </div>
+          </div>
         </div>
       </div>
     </div>
