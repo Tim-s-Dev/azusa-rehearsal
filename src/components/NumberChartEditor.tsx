@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Plus, Save, Sparkles, Keyboard, GripVertical } from 'lucide-react';
+import { Plus, Save, Sparkles, Keyboard, Undo2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { ChartItem, ChartMeasure, SongFile } from '@/lib/types';
 import { isMeasure } from '@/lib/types';
@@ -29,6 +29,7 @@ export default function NumberChartEditor({ songId, songKey, audioFiles = [], on
   const [dirty, setDirty] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [showMetronome, setShowMetronome] = useState(false);
+  const historyRef = useRef<ChartItem[][]>([]);
   const keypad = useKeypad();
 
   const dissect = async () => {
@@ -98,8 +99,21 @@ export default function NumberChartEditor({ songId, songKey, audioFiles = [], on
   }, [dirty, save]);
 
   const updateItems = useCallback((next: ChartItem[]) => {
-    setItems(next);
+    // Push current state to history before changing (max 30 entries)
+    setItems(prev => {
+      historyRef.current.push(JSON.parse(JSON.stringify(prev)));
+      if (historyRef.current.length > 30) historyRef.current.shift();
+      return next;
+    });
     setDirty(true);
+  }, []);
+
+  const undo = useCallback(() => {
+    const prev = historyRef.current.pop();
+    if (prev) {
+      setItems(prev);
+      setDirty(true);
+    }
   }, []);
 
   const addMeasureAtEnd = () => {
@@ -174,7 +188,6 @@ export default function NumberChartEditor({ songId, songKey, audioFiles = [], on
   };
 
   const duplicateSection = (sectionStartIdx: number) => {
-    // Find the end of this section (next index where measure has .section, or end of array)
     let sectionEnd = items.length;
     for (let i = sectionStartIdx + 1; i < items.length; i++) {
       const it = items[i];
@@ -186,6 +199,17 @@ export default function NumberChartEditor({ songId, songKey, audioFiles = [], on
     });
     const next = [...items];
     next.splice(sectionEnd, 0, ...slice);
+    updateItems(next);
+  };
+
+  const deleteSection = (sectionStartIdx: number) => {
+    let sectionEnd = items.length;
+    for (let i = sectionStartIdx + 1; i < items.length; i++) {
+      const it = items[i];
+      if (isMeasure(it) && it.section !== undefined) { sectionEnd = i; break; }
+    }
+    const next = [...items.slice(0, sectionStartIdx), ...items.slice(sectionEnd)];
+    if (next.length === 0) next.push({ type: 'measure' as const, section: 'Intro', beats: ['', '', '', ''] });
     updateItems(next);
   };
 
@@ -237,6 +261,14 @@ export default function NumberChartEditor({ songId, songKey, audioFiles = [], on
               {dissecting ? 'Analyzing...' : 'AI Auto-Fill'}
             </button>
           )}
+          <button
+            onClick={undo}
+            disabled={historyRef.current.length === 0}
+            className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-400 disabled:opacity-20"
+            title="Undo last change"
+          >
+            <Undo2 size={14} />
+          </button>
           <Button onClick={save} disabled={saving} size="sm" className="gap-1">
             <Save size={14} />
             {saving ? 'Saving...' : 'Save'}
@@ -258,6 +290,7 @@ export default function NumberChartEditor({ songId, songKey, audioFiles = [], on
         beatsPerMeasure={beatsPerMeasure}
         onChange={updateItems}
         onDuplicateSection={duplicateSection}
+        onDeleteSection={deleteSection}
         sectionTimestamps={sectionTimestamps}
       />
 

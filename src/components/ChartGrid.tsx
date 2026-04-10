@@ -18,13 +18,15 @@ interface ChartGridProps {
   showAddRemove?: boolean;
   /** Called when user clicks "duplicate" on a section header. Index is local to this slice. */
   onDuplicateSection?: (sectionStartIdx: number) => void;
+  /** Called when user clicks "delete" on a section header. Deletes section + all its measures. */
+  onDeleteSection?: (sectionStartIdx: number) => void;
   /** Map of section index → start timestamp in seconds (used for seek-to-section buttons) */
   sectionTimestamps?: Record<number, number>;
 }
 
 const SECTIONS = ['Intro', 'Verse', 'Pre-Chorus', 'Chorus', 'Bridge', 'Interlude', 'Outro', 'Tag', 'Instrumental', 'Vamp'];
 
-function SectionHeader({ measure, itemIdx, sectionIdx, totalSections, sectionTimestamp, reorderSection, updateSection, onDuplicateSection }: {
+function SectionHeader({ measure, itemIdx, sectionIdx, totalSections, sectionTimestamp, reorderSection, updateSection, onDuplicateSection, onDeleteSection }: {
   measure: ChartMeasure;
   itemIdx: number;
   sectionIdx: number;
@@ -33,6 +35,7 @@ function SectionHeader({ measure, itemIdx, sectionIdx, totalSections, sectionTim
   reorderSection: (from: number, to: number) => void;
   updateSection: (iIdx: number, section: string) => void;
   onDuplicateSection?: (iIdx: number) => void;
+  onDeleteSection?: (sectionStartIdx: number) => void;
 }) {
   const player = usePlayer();
   const seekHere = () => {
@@ -103,6 +106,15 @@ function SectionHeader({ measure, itemIdx, sectionIdx, totalSections, sectionTim
           <Copy size={11} /> Dup
         </button>
       )}
+      {onDeleteSection && totalSections > 1 && (
+        <button
+          onClick={() => onDeleteSection(itemIdx)}
+          className="p-1 rounded text-xs text-zinc-500 hover:text-red-400 hover:bg-red-500/10 inline-flex items-center gap-1"
+          title="Delete this section and all its measures"
+        >
+          <Trash2 size={11} />
+        </button>
+      )}
     </div>
   );
 }
@@ -124,6 +136,7 @@ export default function ChartGrid({
   showSectionHeaders = true,
   showAddRemove = true,
   onDuplicateSection,
+  onDeleteSection,
   sectionTimestamps,
 }: ChartGridProps) {
   const keypad = useKeypad();
@@ -427,6 +440,7 @@ export default function ChartGrid({
               reorderSection={reorderSection}
               updateSection={updateSection}
               onDuplicateSection={onDuplicateSection}
+              onDeleteSection={onDeleteSection}
             />}
             <div className="flex items-center gap-1 group">
               <div className="text-xs text-zinc-600 w-6 text-right shrink-0 font-mono">
