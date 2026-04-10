@@ -407,11 +407,26 @@ export default function LivePage({ params }: LivePageProps) {
       <div className="max-w-4xl mx-auto px-4 py-6">
         <div className="text-center mb-6">
           <div className="flex items-center justify-center gap-3 mb-2">
-            {song.key && (
-              <span className="px-3 py-1 rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white text-sm font-bold">
-                KEY · {song.key}
-              </span>
-            )}
+            <select
+              value={song.key || ''}
+              onChange={async (e) => {
+                const newKey = e.target.value;
+                await fetch('/api/songs', {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ id: songId, key: newKey }),
+                });
+                setSong(prev => prev ? { ...prev, key: newKey } : null);
+              }}
+              className="px-3 py-1.5 rounded-full bg-violet-600 text-white text-sm font-bold border border-violet-500 cursor-pointer"
+              title="Tap to change key"
+            >
+              <option value="">KEY</option>
+              {['C','C#','Db','D','D#','Eb','E','F','F#','Gb','G','G#','Ab','A','A#','Bb','B',
+                'Cm','C#m','Dm','D#m','Ebm','Em','Fm','F#m','Gm','G#m','Am','A#m','Bbm','Bm'].map(k => (
+                <option key={k} value={k}>{k}</option>
+              ))}
+            </select>
             {song.bpm && (
               <span className="px-3 py-1 rounded-full glass text-sm font-mono">
                 {song.bpm} BPM

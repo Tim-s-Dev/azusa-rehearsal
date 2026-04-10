@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { Plus, Trash2, GripVertical, Search, X, Music2, Radio, Save, ChevronDown, ChevronRight } from 'lucide-react';
+import { Plus, Trash2, Search, X, Music2, Radio, Save, ChevronDown, ChevronRight, Pencil, Download } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 
@@ -50,8 +50,10 @@ export default function SetlistsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState('');
   const [saving, setSaving] = useState(false);
-  const [dragIdx, setDragIdx] = useState<number | null>(null);
-  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+  const [editingName, setEditingName] = useState(false);
+  const [editNameValue, setEditNameValue] = useState('');
+  const [showImport, setShowImport] = useState(false);
+  const [eventSets, setEventSets] = useState<{ setId: string; setName: string; eventName: string; confName: string; songs: SongOption[] }[]>([]);
 
   const loadSetlists = () => fetch('/api/setlists').then(r => r.json()).then(d => { setSetlists(Array.isArray(d) ? d : []); setLoading(false); });
 
@@ -141,6 +143,71 @@ export default function SetlistsPage() {
     updated.splice(to, 0, moved);
     setActiveSetlist(prev => prev ? { ...prev, setlist_songs: updated } : null);
     saveOrder(updated);
+  };
+
+  const renameSetlist = async () => {
+    if (!activeId || !editNameValue.trim()) return;
+    await fetch('/api/setlists', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: activeId, name: editNameValue.trim() }),
+    });
+    setEditingName(false);
+    loadSetlists();
+    loadSetlist(activeId);
+  };
+
+  const loadEventSets = async () => {
+    setShowImport(true);
+    // Get all sets with their songs + event + conference info
+    const res = await fetch('/api/sets');
+    const sets = await res.json();
+    if (!Array.isArray(sets)) return;
+    const result: typeof eventSets = [];
+    for (const s of sets) {
+      const songsRes = await fetch(`/api/songs?set_id=${s.id}`);
+      const setSongs = await songsRes.json();
+      // Get event name
+      let eventName = '';
+      let confName = '';
+      if (s.event_id) {
+        const evRes = await fetch(`/api/events?id=${s.event_id}`);
+        const ev = await evRes.json();
+        if (ev) {
+          eventName = ev.name || '';
+          if (ev.conference_id) {
+            const confRes = await fetch(`/api/conferences`);
+            const confs = await confRes.json();
+            const conf = Array.isArray(confs) ? confs.find((c: { id: string }) => c.id === ev.conference_id) : null;
+            confName = conf?.name || '';
+          }
+        }
+      }
+      if (Array.isArray(setSongs) && setSongs.length > 0) {
+        result.push({
+          setId: s.id,
+          setName: s.name,
+          eventName,
+          confName,
+          songs: setSongs.map((ss: SongOption) => ({ id: ss.id, title: ss.title, artist: ss.artist, key: ss.key, bpm: ss.bpm })),
+        });
+      }
+    }
+    setEventSets(result);
+  };
+
+  const importSet = async (set: typeof eventSets[number]) => {
+    // Add all songs from the set that aren't already in the setlist
+    const existing = new Set(songs.map(s => s.song_id));
+    const toAdd = set.songs.filter(s => !existing.has(s.id));
+    if (toAdd.length === 0) return;
+    const updated = [...songs, ...toAdd.map((s, i) => ({
+      id: '', song_id: s.id, sort_order: songs.length + i,
+      key_override: null, notes: null,
+      songs: s,
+    } as SetlistSongRow))];
+    await saveOrder(updated);
+    setShowImport(false);
   };
 
   const filteredSongs = search.trim()
@@ -237,10 +304,39 @@ export default function SetlistsPage() {
         {/* Active setlist editor */}
         {activeSetlist ? (
           <div className="glass rounded-2xl p-4 space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-bold">{activeSetlist.name}</h2>
-              <div className="text-xs text-zinc-500">
-                {saving ? 'Saving…' : `${songs.length} songs`}
+            {/* Editable name */}
+            <div className="flex items-center justify-between gap-2">
+              {editingName ? (
+                <div className="flex items-center gap-2 flex-1">
+                  <Input
+                    value={editNameValue}
+                    onChange={(e) => setEditNameValue(e.target.value)}
+                    className="bg-zinc-900/50 border-zinc-800 text-xl font-bold"
+                    autoFocus
+                    onKeyDown={(e) => e.key === 'Enter' && renameSetlist()}
+                  />
+                  <Button size="sm" onClick={renameSetlist}>Save</Button>
+                  <Button size="sm" variant="outline" onClick={() => setEditingName(false)}>Cancel</Button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => { setEditingName(true); setEditNameValue(activeSetlist.name); }}
+                  className="text-xl font-bold flex items-center gap-2 hover:text-violet-300 transition-colors"
+                >
+                  {activeSetlist.name} <Pencil size={14} className="text-zinc-500" />
+                </button>
+              )}
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={loadEventSets}
+                  className="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs text-zinc-300 flex items-center gap-1"
+                  title="Import songs from an event set"
+                >
+                  <Download size={12} /> Import Set
+                </button>
+                <div className="text-xs text-zinc-500">
+                  {saving ? 'Saving…' : `${songs.length} songs`}
+                </div>
               </div>
             </div>
 
@@ -250,23 +346,26 @@ export default function SetlistsPage() {
                 const song = ss.songs;
                 if (!song) return null;
                 const displayKey = ss.key_override || song.key || '?';
-                const isDragging = dragIdx === i;
-                const isDragOver = dragOverIdx === i && dragIdx !== i;
                 return (
                   <div
                     key={ss.id || i}
-                    draggable
-                    onDragStart={() => setDragIdx(i)}
-                    onDragOver={(e) => { e.preventDefault(); if (dragOverIdx !== i) setDragOverIdx(i); }}
-                    onDragLeave={() => { if (dragOverIdx === i) setDragOverIdx(null); }}
-                    onDrop={(e) => { e.preventDefault(); if (dragIdx !== null) reorder(dragIdx, i); setDragIdx(null); setDragOverIdx(null); }}
-                    onDragEnd={() => { setDragIdx(null); setDragOverIdx(null); }}
-                    className={`flex items-center gap-2 p-2 rounded-xl transition-all ${
-                      isDragging ? 'opacity-40' : ''
-                    } ${isDragOver ? 'ring-2 ring-violet-400 bg-violet-500/10' : 'hover:bg-white/5'}`}
+                    className="flex items-center gap-2 p-2 rounded-xl hover:bg-white/5"
                   >
-                    <div className="cursor-grab active:cursor-grabbing text-zinc-600 hover:text-zinc-300 shrink-0">
-                      <GripVertical size={14} />
+                    <div className="flex flex-col shrink-0">
+                      <button
+                        onClick={() => { if (i > 0) reorder(i, i - 1); }}
+                        disabled={i === 0}
+                        className="p-0.5 text-zinc-600 hover:text-zinc-300 disabled:opacity-20"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 2L2 7h8L6 2z" fill="currentColor"/></svg>
+                      </button>
+                      <button
+                        onClick={() => { if (i < songs.length - 1) reorder(i, i + 1); }}
+                        disabled={i >= songs.length - 1}
+                        className="p-0.5 text-zinc-600 hover:text-zinc-300 disabled:opacity-20"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 10L2 5h8L6 10z" fill="currentColor"/></svg>
+                      </button>
                     </div>
                     <div className="text-xs font-mono text-zinc-600 w-6 text-right shrink-0">
                       {i + 1}
@@ -330,6 +429,35 @@ export default function SetlistsPage() {
                 </div>
               )}
             </div>
+
+            {/* Import from event sets */}
+            {showImport && (
+              <div className="glass rounded-xl p-3 space-y-2 border border-violet-500/30">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs uppercase tracking-wider text-violet-400">Import from event sets</div>
+                  <button onClick={() => setShowImport(false)} className="p-1 hover:bg-white/10 rounded"><X size={14} /></button>
+                </div>
+                {eventSets.length === 0 ? (
+                  <div className="text-xs text-zinc-500 text-center py-4">Loading sets…</div>
+                ) : (
+                  <div className="space-y-1.5 max-h-64 overflow-y-auto">
+                    {eventSets.map(es => (
+                      <button
+                        key={es.setId}
+                        onClick={() => importSet(es)}
+                        className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/5 border border-white/5"
+                      >
+                        <div className="font-semibold text-sm">{es.setName}</div>
+                        <div className="text-[10px] text-zinc-500">{es.confName} · {es.eventName} · {es.songs.length} songs</div>
+                        <div className="text-[10px] text-zinc-600 truncate mt-0.5">
+                          {es.songs.map(s => s.title).join(', ')}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         ) : (
           <div className="glass rounded-2xl p-12 text-center text-zinc-500">
