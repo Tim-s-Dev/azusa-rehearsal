@@ -417,25 +417,27 @@ export default function LivePage({ params }: LivePageProps) {
             >
               {editMode ? (saving ? 'SAVING' : dirty ? 'EDIT ●' : 'EDIT ✓') : 'EDIT'}
             </button>
-            <div className="flex items-center">
+            <div className="flex items-center gap-0.5">
               <button
                 onClick={() => setAutoScroll(!autoScroll)}
-                className={`px-2 py-0.5 rounded-l text-[10px] font-bold ${autoScroll ? 'bg-violet-500/30 text-violet-200' : 'bg-white/5 text-zinc-500'}`}
+                className={`px-2 py-0.5 rounded text-[10px] font-bold ${autoScroll ? 'bg-violet-500/30 text-violet-200' : 'bg-white/5 text-zinc-500'}`}
               >
                 {autoScroll ? '⏬' : 'SCROLL'}
               </button>
               {autoScroll && (
-                <select
-                  value={scrollSpeed}
-                  onChange={(e) => setScrollSpeed(parseFloat(e.target.value))}
-                  className="bg-violet-500/20 text-violet-200 text-[10px] font-bold rounded-r border-0 py-0.5 px-1"
-                >
-                  <option value={0.5}>0.5×</option>
-                  <option value={1}>1×</option>
-                  <option value={1.5}>1.5×</option>
-                  <option value={2}>2×</option>
-                  <option value={3}>3×</option>
-                </select>
+                <>
+                  <button
+                    onClick={() => setScrollSpeed(Math.max(0.1, +(scrollSpeed - 0.1).toFixed(1)))}
+                    className="px-1 py-0.5 rounded bg-white/5 hover:bg-white/10 text-[9px] font-bold text-zinc-400"
+                  >−</button>
+                  <span className="text-[10px] font-mono font-bold text-violet-200 w-8 text-center">
+                    {scrollSpeed.toFixed(1)}
+                  </span>
+                  <button
+                    onClick={() => setScrollSpeed(Math.min(5, +(scrollSpeed + 0.1).toFixed(1)))}
+                    className="px-1 py-0.5 rounded bg-white/5 hover:bg-white/10 text-[9px] font-bold text-zinc-400"
+                  >+</button>
+                </>
               )}
             </div>
           </div>
