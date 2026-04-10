@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { Search, Music2, ArrowUpRight, Filter, X, Radio } from 'lucide-react';
+import { Search, Music2, ArrowUpRight, Filter, X, Radio, Plus } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import AddSongDialog from '@/components/AddSongDialog';
 
 interface SongRow {
   id: string;
@@ -38,6 +39,7 @@ export default function SongsLibraryPage() {
   const [confFilter, setConfFilter] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<SortBy>('title');
   const [showFilters, setShowFilters] = useState(false);
+  const [showAddSong, setShowAddSong] = useState(false);
 
   useEffect(() => {
     fetch('/api/songs?all=1')
@@ -110,7 +112,23 @@ export default function SongsLibraryPage() {
           <span className="gradient-text">All songs</span>
         </h1>
         <p className="text-zinc-400">Search and jump to any song without digging through events.</p>
+        <button
+          onClick={() => setShowAddSong(true)}
+          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:scale-105 transition-transform text-white text-sm font-medium shadow-lg shadow-violet-600/20 mt-2"
+        >
+          <Plus size={16} /> Add Song
+        </button>
       </div>
+
+      {showAddSong && (
+        <AddSongDialog
+          onCreated={() => {
+            setShowAddSong(false);
+            fetch('/api/songs?all=1').then(r => r.json()).then(d => { if (Array.isArray(d)) setSongs(d); });
+          }}
+          onClose={() => setShowAddSong(false)}
+        />
+      )}
 
       {/* Search + filter bar */}
       <div className="space-y-2">

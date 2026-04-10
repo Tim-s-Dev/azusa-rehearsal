@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { Plus, Trash2, Search, X, Music2, Radio, Save, ChevronDown, ChevronRight, Pencil, Download } from 'lucide-react';
+import AddSongDialog from '@/components/AddSongDialog';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 
@@ -53,6 +54,7 @@ export default function SetlistsPage() {
   const [editingName, setEditingName] = useState(false);
   const [editNameValue, setEditNameValue] = useState('');
   const [showImport, setShowImport] = useState(false);
+  const [showAddNewSong, setShowAddNewSong] = useState(false);
   const [eventSets, setEventSets] = useState<{ setId: string; setName: string; eventName: string; confName: string; songs: SongOption[] }[]>([]);
 
   const loadSetlists = () => fetch('/api/setlists').then(r => r.json()).then(d => { setSetlists(Array.isArray(d) ? d : []); setLoading(false); });
@@ -427,6 +429,23 @@ export default function SetlistsPage() {
                     </button>
                   ))}
                 </div>
+              )}
+              <button
+                onClick={() => setShowAddNewSong(true)}
+                className="w-full px-3 py-2 rounded-xl border-2 border-dashed border-white/10 hover:border-violet-500/50 text-xs text-zinc-400 hover:text-white transition-colors flex items-center justify-center gap-1"
+              >
+                <Plus size={12} /> Create New Song
+              </button>
+              {showAddNewSong && (
+                <AddSongDialog
+                  onCreated={(song) => {
+                    setShowAddNewSong(false);
+                    // Add the new song to allSongs + to the setlist
+                    setAllSongs(prev => [...prev, song]);
+                    addSong(song.id);
+                  }}
+                  onClose={() => setShowAddNewSong(false)}
+                />
               )}
             </div>
 
