@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useMemo, use } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, ChevronRight, Play, Pause, X, Pencil, MessageSquare, Mic, Save, SkipBack, SkipForward, Repeat } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Play, Pause, X, Pencil, MessageSquare, Mic, Save, Repeat, Circle } from 'lucide-react';
 import type { Song, SongFile, ChartItem, SongStructureSection, ChartMeasure, ChartNote, ChartLyric } from '@/lib/types';
 import { isMeasure, SECTION_COLORS, normalizeSectionType } from '@/lib/types';
 import { groupMeasuresBySection } from '@/lib/structure';
@@ -52,6 +52,7 @@ export default function LivePage({ params }: LivePageProps) {
   const [saving, setSaving] = useState(false);
   const [loopA, setLoopA] = useState<number | null>(null);
   const [loopB, setLoopB] = useState<number | null>(null);
+  const [recording, setRecording] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const autoScrollTimerRef = useRef<number | null>(null);
   const keypad = useKeypad();
@@ -251,6 +252,67 @@ export default function LivePage({ params }: LivePageProps) {
 
   const isLooping = loopA !== null && loopB !== null;
 
+  // ── Recording: tap sections to stamp timestamps ──────────────
+  const TAG_TYPES: { type: string; label: string; color: string }[] = [
+    { type: 'intro', label: 'Intro', color: '#64748b' },
+    { type: 'verse', label: 'Verse', color: '#3b82f6' },
+    { type: 'pre-chorus', label: 'Pre', color: '#06b6d4' },
+    { type: 'chorus', label: 'Chorus', color: '#8b5cf6' },
+    { type: 'bridge', label: 'Bridge', color: '#d946ef' },
+    { type: 'interlude', label: 'Intrlde', color: '#f59e0b' },
+    { type: 'instrumental', label: 'Inst', color: '#f59e0b' },
+    { type: 'tag', label: 'Tag', color: '#10b981' },
+    { type: 'outro', label: 'Outro', color: '#71717a' },
+  ];
+
+  const startRecording = () => {
+    setRecording(true);
+    if (isCurrentSong && !player.isPlaying) player.togglePlay();
+  };
+
+  const stopRecording = async () => {
+    setRecording(false);
+    // Close the last open section at the current time
+    if (song && structure.length > 0) {
+      const last = structure[structure.length - 1];
+      if (last.end <= last.start || last.end < currentTime) {
+        const updated = [...structure];
+        updated[updated.length - 1] = { ...last, end: currentTime };
+        await fetch('/api/songs', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: songId, structure: updated }),
+        });
+        setSong(prev => prev ? { ...prev, structure: updated } : null);
+      }
+    }
+  };
+
+  const tagSection = async (type: string, label: string) => {
+    if (!isCurrentSong || !song) return;
+    const t = currentTime;
+    const updated = [...structure];
+    // Close the previous section at this time
+    if (updated.length > 0) {
+      const last = updated[updated.length - 1];
+      updated[updated.length - 1] = { ...last, end: t };
+    }
+    // Add new section starting at this time
+    updated.push({
+      name: label,
+      type: type as SongStructureSection['type'],
+      start: t,
+      end: t + 30, // placeholder end — will be closed by next tag or stopRecording
+      markers: [],
+    });
+    await fetch('/api/songs', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: songId, structure: updated }),
+    });
+    setSong(prev => prev ? { ...prev, structure: updated } : null);
+  };
+
   // Prev/next song nav (in same set)
   const sortedSetSongs = useMemo(
     () => [...setSongs].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)),
@@ -301,6 +363,14 @@ export default function LivePage({ params }: LivePageProps) {
             <div className="text-[10px] uppercase tracking-widest text-violet-400">LIVE</div>
             <div className="text-sm font-bold truncate">{song.title}</div>
           </div>
+          <button
+            onClick={recording ? stopRecording : startRecording}
+            className={`px-2 py-1 rounded text-[10px] font-bold ${recording ? 'bg-red-500/30 text-red-300 animate-pulse' : 'bg-white/5 text-zinc-500'}`}
+            title={recording ? 'Stop recording sections' : 'Record: play the song and tap sections to mark timestamps'}
+          >
+            <Circle size={8} className={`inline mr-0.5 ${recording ? 'fill-red-400' : ''}`} />
+            {recording ? 'REC' : 'TAG'}
+          </button>
           <button
             onClick={toggleEditMode}
             className={`px-2 py-1 rounded text-[10px] font-bold ${editMode ? 'bg-amber-500/30 text-amber-200' : 'bg-white/5 text-zinc-500'}`}
@@ -460,6 +530,71 @@ export default function LivePage({ params }: LivePageProps) {
           )}
         </div>
       </div>
+
+      {/* Recording tag buttons */}
+      {recording && (
+        <div className="fixed bottom-[220px] left-0 right-0 z-40 px-2">
+          <div className="max-w-4xl mx-auto glass rounded-2xl p-2 shadow-2xl shadow-black/50 border border-red-500/30">
+            <div className="text-[9px] uppercase tracking-widest text-red-400 text-center mb-1.5">
+              ● REC — Tap a section as you hear it
+            </div>
+            <div className="grid grid-cols-5 gap-1.5">
+              {TAG_TYPES.map(t => (
+                <button
+                  key={t.type}
+                  onClick={() => tagSection(t.type, t.label)}
+                  className="py-2.5 rounded-lg text-[10px] font-bold text-white transition-all active:scale-90"
+                  style={{ backgroundColor: t.color + '40', borderColor: t.color, borderWidth: 1 }}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Colored section progress bar */}
+      {structure.length > 0 && player.duration > 0 && (
+        <div className="fixed bottom-[185px] left-0 right-0 z-40 px-4">
+          <div className="max-w-4xl mx-auto">
+            <div className="flex h-4 rounded-full overflow-hidden bg-zinc-900/80 border border-white/5 relative">
+              {structure.map((sec, i) => {
+                const startPct = (sec.start / player.duration) * 100;
+                const widthPct = ((sec.end - sec.start) / player.duration) * 100;
+                const tagDef = TAG_TYPES.find(t => t.type === sec.type) || TAG_TYPES[0];
+                return (
+                  <button
+                    key={i}
+                    onClick={() => { if (isCurrentSong) player.seek(sec.start); }}
+                    className="absolute top-0 bottom-0 transition-all hover:brightness-150"
+                    style={{
+                      left: `${startPct}%`,
+                      width: `${Math.max(widthPct, 0.5)}%`,
+                      backgroundColor: tagDef.color + '60',
+                      borderRight: '1px solid rgba(0,0,0,0.3)',
+                    }}
+                    title={`${sec.name} (${formatTime(sec.start)})`}
+                  >
+                    {widthPct > 6 && (
+                      <span className="text-[7px] font-bold text-white/80 truncate block px-0.5 leading-4">
+                        {sec.name}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+              {/* Playhead */}
+              {isCurrentSong && (
+                <div
+                  className="absolute top-0 bottom-0 w-0.5 bg-white z-10 shadow-lg shadow-white/50"
+                  style={{ left: `${(currentTime / player.duration) * 100}%` }}
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Bottom control bar */}
       <div className="fixed bottom-24 left-0 right-0 z-40 px-2">
