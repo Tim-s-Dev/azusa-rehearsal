@@ -363,18 +363,19 @@ export default function LivePage({ params }: LivePageProps) {
 
   return (
     <div className="min-h-screen pb-32" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
-      {/* Sticky header — always visible */}
-      <div className="sticky top-0 z-30 glass border-b border-white/10 backdrop-blur-xl">
-        <div className="max-w-4xl mx-auto px-3 py-1.5 space-y-1">
-          {/* Row 1: Song info + key */}
-          <div className="flex items-center gap-2">
+      {/* ═══ STICKY HEADER ═══ */}
+      <div className="fixed top-0 left-0 right-0 z-50 bg-zinc-950/95 backdrop-blur-xl border-b border-white/10 safe-top">
+        <div className="max-w-4xl mx-auto px-3 py-2">
+          {/* Song info bar */}
+          <div className="flex items-center gap-3">
             <Link
               href={confInfo ? `/conference/${confInfo.confId}/event/${confInfo.eventId}/set/${confInfo.setId}/song/${songId}` : '/'}
-              className="p-1.5 rounded-lg hover:bg-white/10 shrink-0"
-              title="Exit Live Mode"
+              className="p-2 rounded-xl bg-white/5 hover:bg-white/10 shrink-0"
             >
-              <X size={14} />
+              <X size={16} />
             </Link>
+
+            {/* Key badge */}
             <select
               value={song.key || ''}
               onChange={async (e) => {
@@ -386,7 +387,7 @@ export default function LivePage({ params }: LivePageProps) {
                 });
                 setSong(prev => prev ? { ...prev, key: newKey } : null);
               }}
-              className="px-2 py-0.5 rounded-full bg-violet-600 text-white text-xs font-bold border border-violet-500 cursor-pointer shrink-0"
+              className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white text-sm font-bold border-0 cursor-pointer shrink-0 shadow-lg shadow-violet-600/20"
             >
               <option value="">KEY</option>
               {['C','C#','Db','D','D#','Eb','E','F','F#','Gb','G','G#','Ab','A','A#','Bb','B',
@@ -394,55 +395,83 @@ export default function LivePage({ params }: LivePageProps) {
                 <option key={k} value={k}>{k}</option>
               ))}
             </select>
-            <div className="flex-1 min-w-0 text-center">
-              <div className="text-sm font-bold truncate">{song.title}</div>
-              {song.artist && <div className="text-[10px] text-zinc-500 truncate">{song.artist}</div>}
+
+            {/* Song title + artist */}
+            <div className="flex-1 min-w-0">
+              <div className="text-base font-bold truncate leading-tight">{song.title}</div>
+              {song.artist && <div className="text-[11px] text-zinc-400 truncate">{song.artist}</div>}
             </div>
+
+            {/* BPM */}
             {song.bpm && (
-              <span className="text-xs font-mono text-zinc-400 shrink-0">{song.bpm}</span>
+              <div className="px-2.5 py-1 rounded-xl bg-white/5 text-xs font-mono font-bold text-zinc-300 shrink-0">
+                {song.bpm}
+              </div>
             )}
           </div>
-          {/* Row 2: Action buttons */}
-          <div className="flex items-center gap-1 justify-center">
+
+          {/* Action bar */}
+          <div className="flex items-center gap-2 mt-2">
+            {/* TAG */}
             <button
               onClick={recording ? stopRecording : startRecording}
-              className={`px-2 py-0.5 rounded text-[10px] font-bold ${recording ? 'bg-red-500/30 text-red-300 animate-pulse' : 'bg-white/5 text-zinc-500'}`}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
+                recording
+                  ? 'bg-red-500/20 text-red-300 ring-1 ring-red-500/50 animate-pulse shadow-lg shadow-red-500/20'
+                  : 'bg-white/5 text-zinc-400 hover:bg-white/10'
+              }`}
             >
-              <Circle size={7} className={`inline mr-0.5 ${recording ? 'fill-red-400' : ''}`} />
-              {recording ? 'REC' : 'TAG'}
+              <Circle size={8} className={recording ? 'fill-red-400' : ''} />
+              {recording ? 'RECORDING' : 'TAG'}
             </button>
+
+            {/* EDIT */}
             <button
               onClick={toggleEditMode}
-              className={`px-2 py-0.5 rounded text-[10px] font-bold ${editMode ? 'bg-amber-500/30 text-amber-200' : 'bg-white/5 text-zinc-500'}`}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                editMode
+                  ? 'bg-amber-500/20 text-amber-300 ring-1 ring-amber-500/50'
+                  : 'bg-white/5 text-zinc-400 hover:bg-white/10'
+              }`}
             >
-              {editMode ? (saving ? 'SAVING' : dirty ? 'EDIT ●' : 'EDIT ✓') : 'EDIT'}
+              <Pencil size={10} className="inline mr-1" />
+              {editMode ? (saving ? 'SAVING…' : dirty ? 'EDIT ●' : 'EDITING') : 'EDIT'}
             </button>
-            <div className="flex items-center gap-0.5">
+
+            <div className="flex-1" />
+
+            {/* SCROLL */}
+            <div className="flex items-center gap-1 bg-white/5 rounded-xl px-1">
               <button
                 onClick={() => setAutoScroll(!autoScroll)}
-                className={`px-2 py-0.5 rounded text-[10px] font-bold ${autoScroll ? 'bg-violet-500/30 text-violet-200' : 'bg-white/5 text-zinc-500'}`}
+                className={`px-2 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  autoScroll ? 'text-violet-300' : 'text-zinc-500'
+                }`}
               >
-                {autoScroll ? '⏬' : 'SCROLL'}
+                {autoScroll ? '⏬ ON' : 'SCROLL'}
               </button>
               {autoScroll && (
-                <>
+                <div className="flex items-center gap-0.5 pr-1">
                   <button
                     onClick={() => setScrollSpeed(Math.max(0.1, +(scrollSpeed - 0.1).toFixed(1)))}
-                    className="px-1 py-0.5 rounded bg-white/5 hover:bg-white/10 text-[9px] font-bold text-zinc-400"
+                    className="w-6 h-6 rounded-lg bg-white/5 hover:bg-white/15 text-xs font-bold text-zinc-400 flex items-center justify-center"
                   >−</button>
-                  <span className="text-[10px] font-mono font-bold text-violet-200 w-8 text-center">
+                  <span className="text-xs font-mono font-bold text-violet-200 w-8 text-center">
                     {scrollSpeed.toFixed(1)}
                   </span>
                   <button
                     onClick={() => setScrollSpeed(Math.min(5, +(scrollSpeed + 0.1).toFixed(1)))}
-                    className="px-1 py-0.5 rounded bg-white/5 hover:bg-white/10 text-[9px] font-bold text-zinc-400"
+                    className="w-6 h-6 rounded-lg bg-white/5 hover:bg-white/15 text-xs font-bold text-zinc-400 flex items-center justify-center"
                   >+</button>
-                </>
+                </div>
               )}
             </div>
           </div>
         </div>
       </div>
+
+      {/* Spacer for fixed header */}
+      <div className="h-[100px]" />
 
       {/* Chart content */}
       <div className="max-w-4xl mx-auto px-4 py-4">
