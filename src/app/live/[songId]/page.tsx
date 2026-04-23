@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useMemo, use } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, ChevronRight, Play, Pause, X, Pencil, MessageSquare, Mic, Save, Repeat, Circle } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Play, Pause, X, Pencil, MessageSquare, Mic, Save, Repeat, Circle, Hash } from 'lucide-react';
 import type { Song, SongFile, ChartItem, SongStructureSection, ChartMeasure, ChartNote, ChartLyric } from '@/lib/types';
 import { isMeasure, SECTION_COLORS, normalizeSectionType } from '@/lib/types';
 import { groupMeasuresBySection } from '@/lib/structure';
@@ -441,7 +441,7 @@ export default function LivePage({ params }: LivePageProps) {
               {recording ? 'RECORDING' : 'TAG'}
             </button>
 
-            {/* EDIT */}
+            {/* EDIT (in-place live edit toggle) */}
             <button
               onClick={toggleEditMode}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
@@ -453,6 +453,18 @@ export default function LivePage({ params }: LivePageProps) {
               <Pencil size={10} className="inline mr-1" />
               {editMode ? (saving ? 'SAVING…' : dirty ? 'EDIT ●' : 'EDITING') : 'EDIT'}
             </button>
+
+            {/* CHART (jump to full chart editor on the song detail page) */}
+            {confInfo && (
+              <Link
+                href={`/conference/${confInfo.confId}/event/${confInfo.eventId}/set/${confInfo.setId}/song/${songId}#chart`}
+                className="px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 bg-white/5 text-zinc-400 hover:bg-white/10 transition-all"
+                title="Open full chart editor"
+              >
+                <Hash size={10} />
+                CHART
+              </Link>
+            )}
 
             <div className="flex-1" />
 
@@ -495,8 +507,19 @@ export default function LivePage({ params }: LivePageProps) {
         {/* Big chart */}
         <div className="space-y-6">
           {groups.length === 0 ? (
-            <div className="glass rounded-3xl p-12 text-center text-zinc-500">
-              No chart yet. Open the song&apos;s Chart tab to fill it in or run AI dissect.
+            <div className="glass rounded-3xl p-12 text-center">
+              <p className="text-zinc-400 mb-5">No chart yet for this song.</p>
+              {confInfo ? (
+                <Link
+                  href={`/conference/${confInfo.confId}/event/${confInfo.eventId}/set/${confInfo.setId}/song/${songId}#chart`}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white hover:from-violet-500 hover:to-fuchsia-500 transition-all shadow-lg shadow-fuchsia-500/20"
+                >
+                  <Hash size={14} />
+                  Open Chart Editor
+                </Link>
+              ) : (
+                <p className="text-zinc-600 text-sm">Navigate to the song&apos;s detail page to fill in the chart or run AI dissect.</p>
+              )}
             </div>
           ) : (
             groups.map((group, gIdx) => {

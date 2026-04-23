@@ -23,6 +23,19 @@ export default function SongPage() {
   const [song, setSong] = useState<Song | null>(null);
   const [files, setFiles] = useState<SongFile[]>([]);
 
+  // Deep-link to a specific tab via URL hash (e.g. /.../songId#chart)
+  const VALID_TABS = ['media', 'notes', 'chart', 'structure', 'piano', 'dissect'] as const;
+  const [activeTab, setActiveTab] = useState<string>('media');
+  useEffect(() => {
+    const readHash = () => {
+      const h = window.location.hash.replace(/^#/, '');
+      if ((VALID_TABS as readonly string[]).includes(h)) setActiveTab(h);
+    };
+    readHash();
+    window.addEventListener('hashchange', readHash);
+    return () => window.removeEventListener('hashchange', readHash);
+  }, []);
+
   useEffect(() => {
     loadSong();
     loadFiles();
@@ -94,7 +107,16 @@ export default function SongPage() {
       {song && <SongTimeline song={song} mode="compact" />}
 
       {/* Tabs */}
-      <Tabs defaultValue="media" className="w-full">
+      <Tabs
+        value={activeTab}
+        onValueChange={(v) => {
+          setActiveTab(v as string);
+          if (typeof window !== 'undefined') {
+            history.replaceState(null, '', `#${v}`);
+          }
+        }}
+        className="w-full"
+      >
         <TabsList className="glass p-1 rounded-full h-auto gap-1">
           <TabsTrigger value="media" className="rounded-full px-4 py-2 gap-1.5 data-[state=active]:bg-gradient-to-r data-[state=active]:from-violet-600 data-[state=active]:to-fuchsia-600 data-[state=active]:text-white">
             <Music2 size={14} /> Media
